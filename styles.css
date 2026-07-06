@@ -1137,3 +1137,51 @@ main {
 .print-title {
     display: none;
 }
+
+/* Saturday Special Positions Styles */
+.sat-position-tag {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    font-size: 0.72rem;
+    border-radius: var(--border-radius-sm);
+    font-weight: 500;
+    border: 1px solid transparent;
+    margin-top: 2px;
+}
+
+.sat-position-tag.angio {
+    background: rgba(56, 189, 248, 0.08);
+    border-color: rgba(56, 189, 248, 0.25);
+    color: #38bdf8;
+}
+
+.sat-position-tag.spec {
+    background: rgba(168, 85, 247, 0.08);
+    border-color: rgba(168, 85, 247, 0.25);
+    color: #c084fc;
+}
+
+.sat-position-tag.inj {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+}
+
+.sat-position-tag.unassigned {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    font-style: italic;
+}
+
+.sat-position-label {
+    font-weight: 700;
+    font-size: 0.65rem;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-right: 4px;
+}
+

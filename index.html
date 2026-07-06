@@ -118,6 +118,24 @@
                 </div>
             </div>
 
+            <!-- Last Month Last Day Duty Settings -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>上月最後一日值班人員</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">設定上個月最後一天的值班醫師以利跨月衝突檢核</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <label for="last-day-c1" style="font-size:0.75rem;">一線值班 (C1):</label>
+                        <select id="last-day-c1" style="width: 100%; padding: 6px; border-radius: var(--border-radius-sm); background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); outline: none; cursor: pointer;"></select>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <label for="last-day-c2" style="font-size:0.75rem;">二線值班 (C2):</label>
+                        <select id="last-day-c2" style="width: 100%; padding: 6px; border-radius: var(--border-radius-sm); background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); outline: none; cursor: pointer;"></select>
+                    </div>
+                </div>
+            </div>
+
             <!-- Bottom Reset Controls -->
             <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
                 <button class="btn btn-outline" id="btn-clear-schedule" style="font-size:0.8rem; padding: 6px; justify-content: center; border-color: rgba(239, 68, 68, 0.2); color: #fca5a5;">
@@ -232,6 +250,24 @@
                 </div>
 
                 <div class="form-group">
+                    <label>週六值班位置資格 (可複選)</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-angio" value="angio" checked>
+                            血管攝影室
+                        </label>
+                        <label class="radio-label">
+                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-spec" value="spec" checked>
+                            特殊攝影
+                        </label>
+                        <label class="radio-label">
+                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-inj" value="inj" checked>
+                            注射室
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label for="doc-color-input">個人專屬色彩</label>
                     <input type="color" id="doc-color-input" value="#3b82f6" style="padding: 2px; height: 38px; cursor: pointer; border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); width: 100%;">
                 </div>
@@ -320,6 +356,27 @@
                     </h4>
                     <div class="daily-editor-checkboxes" id="daily-editor-c2-checkboxes">
                         <!-- Checkboxes dynamically inserted here -->
+                    </div>
+                </div>
+
+                <!-- Saturday Positions (Only visible on Saturdays) -->
+                <div class="daily-editor-section" id="daily-editor-sat-section" style="display: none; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px; margin-top: 15px;">
+                    <h4 style="color: var(--accent-cyan); margin-bottom: 10px;">
+                        📅 週六特殊位置負責人分配
+                    </h4>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="sat-select-angio" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">血管攝影室負責人 (Angio)</label>
+                            <select id="sat-select-angio" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="sat-select-spec" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">特殊攝影負責人 (Spec)</label>
+                            <select id="sat-select-spec" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="sat-select-inj" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">注射室負責人 (Inj)</label>
+                            <select id="sat-select-inj" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                        </div>
                     </div>
                 </div>
 

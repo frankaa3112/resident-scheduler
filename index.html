@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>住院醫師排班系統 - Resident Scheduling System</title>
+    <meta name="description" content="專業的住院醫師排班與衝突驗證系統，支援自動排班、規則設定與 CSV 匯出">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Print-only Title -->
+    <div class="print-title">
+        住院醫師排班表 (<span id="print-month-label">本月</span>)
+    </div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header>
+            <div class="brand-section">
+                <div class="logo-icon">🥼</div>
+                <div>
+                    <h1>住院醫師排班系統</h1>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">智慧自動化排班與排程合規管理</div>
+                </div>
+            </div>
+            
+            <div class="header-controls">
+                <div class="month-picker">
+                    <label for="month-select" style="font-size: 0.85rem; color: var(--text-secondary); margin-right: 5px;">選擇月份:</label>
+                    <input type="month" id="month-select">
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-primary" id="btn-auto-schedule" title="使用排班演算法自動分配班表">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                        自動排班
+                    </button>
+                    <button class="btn btn-secondary" id="btn-export" title="匯出為 Excel/CSV 檔案">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        匯出 CSV
+                    </button>
+                    <button class="btn btn-outline" id="btn-print" title="列印或儲存為 PDF">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        列印課表
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside>
+            <!-- Doctor Roster -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>醫師名單</span>
+                    <span class="count-badge" id="doctors-count">0</span>
+                </div>
+                <button class="btn btn-outline" id="btn-add-doctor" style="width: 100%; justify-content: center; margin-bottom: 12px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    新增住院醫師
+                </button>
+                <div class="doctor-list" id="doctors-container">
+                    <!-- Doctors dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Rules & Constraints -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>排班檢核規則</span>
+                </div>
+                <div class="rule-group">
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-off-weekdays" data-rule="offWeekdays" checked>
+                        <label for="rule-off-weekdays"><strong>遵守每週不值班設定</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">避開個別醫師設定之星期幾不排值班。</span></label>
+                    </div>
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-consecutive-duty" data-rule="consecutiveDuty" checked>
+                        <label for="rule-consecutive-duty"><strong>不連續值班 (值值班)</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">值班 (C1/C2) 後，隔日不可再值班。</span></label>
+                    </div>
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-avoid-qod" data-rule="avoidQod" checked>
+                        <label for="rule-avoid-qod"><strong>避免隔日值班 (QOD)</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">避開間隔僅一日的值班排程（如 5 號與 7 號皆值班）。</span></label>
+                    </div>
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-max-shifts" data-rule="maxShifts" checked>
+                        <label for="rule-max-shifts"><strong>限制每月班數上限</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">排班數不得超出個別醫師的上限。</span></label>
+                    </div>
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-off-days" data-rule="offDays" checked>
+                        <label for="rule-off-days"><strong>盡量符合預約休假</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">醫師設定的休假日期優先安排 Off。</span></label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staffing Requirements -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>每日人力需求</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">設定每天各班別最少需要的人數</div>
+                
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                        <strong style="font-size: 0.85rem; color: var(--accent-cyan);">平日 (週一至週五)</strong>
+                        <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                            <label style="font-size:0.75rem;">一線 (C1): <input type="number" id="req-wd-c1" min="0" max="9" value="1" style="width:38px;"></label>
+                            <label style="font-size:0.75rem;">二線 (C2): <input type="number" id="req-wd-c2" min="0" max="9" value="1" style="width:38px;"></label>
+                        </div>
+                    </div>
+                    
+                    <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+                        <strong style="font-size: 0.85rem; color: var(--accent-purple);">假日 (週六、週日)</strong>
+                        <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+                            <label style="font-size:0.75rem;">一線 (C1): <input type="number" id="req-we-c1" min="0" max="9" value="1" style="width:38px;"></label>
+                            <label style="font-size:0.75rem;">二線 (C2): <input type="number" id="req-we-c2" min="0" max="9" value="1" style="width:38px;"></label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Reset Controls -->
+            <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+                <button class="btn btn-outline" id="btn-clear-schedule" style="font-size:0.8rem; padding: 6px; justify-content: center; border-color: rgba(239, 68, 68, 0.2); color: #fca5a5;">
+                    清除本月班表
+                </button>
+                <button class="btn btn-outline" id="btn-reset-settings" style="font-size:0.8rem; padding: 6px; justify-content: center; color: var(--text-muted);">
+                    重設回預設資料
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main>
+            <!-- Legend Panel -->
+            <div class="scheduler-legend">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <strong style="font-size: 0.95rem;">班別說明:</strong>
+                    <div class="legend-items">
+                        <div class="legend-item"><span class="shift-badge shift-c1">C1</span> 一線值班 (First-line)</div>
+                        <div class="legend-item"><span class="shift-badge shift-c2">C2</span> 二線值班 (Second-line)</div>
+                        <div class="legend-item"><span class="shift-badge shift-off">O</span> 休假 (Off)</div>
+                    </div>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-muted);">
+                    💡 提示: 點擊月曆中的日期卡片即可編輯該天各個班別的人員。
+                </div>
+            </div>
+
+            <!-- Grid Card (Monthly Calendar View) -->
+            <div class="panel-card scheduler-card">
+                <div class="calendar-viewport" id="calendar-viewport">
+                    <div class="calendar-container" id="grid-container">
+                        <!-- Monthly calendar dynamically rendered here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Row -->
+            <div class="dashboard-grid">
+                <!-- Statistics Card -->
+                <div class="panel-card stats-card">
+                    <div class="panel-title">
+                        <span>排班統計 (班數上限與分佈)</span>
+                    </div>
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>醫師姓名</th>
+                                <th>總值班數 / 上限</th>
+                                <th>一線值班 (C1)</th>
+                                <th>二線值班 (C2)</th>
+                                <th>週末值班數</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-table-body">
+                            <!-- Dynamic stats inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Warnings & Conflicts Card -->
+                <div class="panel-card warnings-card">
+                    <div class="panel-title">
+                        <span>排班衝突與警示</span>
+                    </div>
+                    <div class="warnings-container" id="warnings-container">
+                        <!-- Dynamic warnings inserted here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Resident Modal -->
+    <div class="modal-overlay" id="doctor-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-action-title">新增住院醫師</h3>
+                <button class="btn-icon" id="modal-close" style="font-size: 1.5rem; line-height: 1;">&times;</button>
+            </div>
+            <form id="doctor-form">
+                <input type="hidden" id="doctor-id">
+                
+                <div class="form-group">
+                    <label for="doc-name-input">姓名</label>
+                    <input type="text" id="doc-name-input" required placeholder="例如: 王大明">
+                </div>
+
+                <div class="form-group">
+                    <label for="doc-level-input">職級 / 職稱</label>
+                    <select id="doc-level-input" required>
+                        <option value="CR (總住院醫師)">CR (總住院醫師)</option>
+                        <option value="R4 (住院醫師)">R4 (住院醫師)</option>
+                        <option value="R3 (住院醫師)">R3 (住院醫師)</option>
+                        <option value="R2 (住院醫師)">R2 (住院醫師)</option>
+                        <option value="R1 (住院醫師)">R1 (住院醫師)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>值班人員類別 (可複選)</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="checkbox" name="doc-tiers" id="doc-tier-first" value="first">
+                            一線人員 (First-line)
+                        </label>
+                        <label class="radio-label">
+                            <input type="checkbox" name="doc-tiers" id="doc-tier-second" value="second">
+                            二線人員 (Second-line)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="doc-color-input">個人專屬色彩</label>
+                    <input type="color" id="doc-color-input" value="#3b82f6" style="padding: 2px; height: 38px; cursor: pointer; border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); width: 100%;">
+                </div>
+
+                <div class="form-group">
+                    <label>每週固定不值班時間 (每週重複避開)</label>
+                    <div class="weekday-checkbox-grid">
+                        <label class="weekday-checkbox-label" id="lbl-wd-0">
+                            <input type="checkbox" name="doc-off-weekday" value="0">
+                            週日
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-1">
+                            <input type="checkbox" name="doc-off-weekday" value="1">
+                            週一
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-2">
+                            <input type="checkbox" name="doc-off-weekday" value="2">
+                            週二
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-3">
+                            <input type="checkbox" name="doc-off-weekday" value="3">
+                            週三
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-4">
+                            <input type="checkbox" name="doc-off-weekday" value="4">
+                            週四
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-5">
+                            <input type="checkbox" name="doc-off-weekday" value="5">
+                            週五
+                        </label>
+                        <label class="weekday-checkbox-label" id="lbl-wd-6">
+                            <input type="checkbox" name="doc-off-weekday" value="6">
+                            週六
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="doc-shifts-input">每月值班上限 (班)</label>
+                        <input type="number" id="doc-shifts-input" required min="1" max="31" value="10">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="doc-offdays-input">特定預約休假日期</label>
+                        <input type="text" id="doc-offdays-input" placeholder="例如: 3, 14, 25">
+                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">多個日期請用半形逗號分隔</div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="modal-cancel">取消</button>
+                    <button type="submit" class="btn btn-primary">儲存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Daily Shift Editor Modal -->
+    <div class="modal-overlay" id="daily-editor-modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="daily-editor-title">每日排班編輯</h3>
+                <button class="btn-icon" id="daily-editor-close" type="button" style="font-size: 1.5rem; line-height: 1;">&times;</button>
+            </div>
+            <form id="daily-editor-form">
+                <input type="hidden" id="daily-editor-day">
+                
+                <!-- First-line Duty (C1) -->
+                <div class="daily-editor-section">
+                    <h4 style="color: var(--shift-c1-text);">
+                        <span class="shift-badge shift-c1" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C1</span>
+                        一線值班 (First-line Duty)
+                    </h4>
+                    <div class="daily-editor-checkboxes" id="daily-editor-c1-checkboxes">
+                        <!-- Checkboxes dynamically inserted here -->
+                    </div>
+                </div>
+
+                <!-- Second-line Duty (C2) -->
+                <div class="daily-editor-section">
+                    <h4 style="color: var(--shift-c2-text);">
+                        <span class="shift-badge shift-c2" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C2</span>
+                        二線值班 (Second-line Duty)
+                    </h4>
+                    <div class="daily-editor-checkboxes" id="daily-editor-c2-checkboxes">
+                        <!-- Checkboxes dynamically inserted here -->
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" id="daily-editor-cancel">取消</button>
+                    <button type="submit" class="btn btn-primary">儲存變更</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auto Schedule Spinner Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">自動排班計算中...</div>
+        <div class="loading-subtext">正在尋找滿足所有排班限制的解法</div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

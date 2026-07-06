@@ -29,11 +29,15 @@ const SHIFT_TYPES = {
 
 // Initial/Default Doctors List (No PGY, with weekly off-duty weekday settings and multiple tiers)
 const DEFAULT_RESIDENTS = [
-    { id: '1', name: '林志玲', level: 'CR (總住院醫師)', tiers: ['second'], offWeekdays: [6, 0], maxShifts: 8, offDays: [5, 12, 19, 26], color: '#3b82f6' },
-    { id: '2', name: '陳明哲', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [3], maxShifts: 8, offDays: [3, 10, 17], color: '#10b981' },
-    { id: '3', name: '張雅婷', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [2], maxShifts: 8, offDays: [7, 14, 21], color: '#a855f7' },
-    { id: '4', name: '許志豪', level: 'R2 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [4], maxShifts: 8, offDays: [2, 16, 30], color: '#d97706' },
-    { id: '5', name: '李美玲', level: 'R1 (住院醫師)', tiers: ['first'], offWeekdays: [1], maxShifts: 8, offDays: [8, 22], color: '#ec4899' }
+    { id: '1', name: '醫師一', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6' },
+    { id: '2', name: '醫師二', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981' },
+    { id: '3', name: '醫師三', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7' },
+    { id: '4', name: '醫師四', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706' },
+    { id: '5', name: '醫師五', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899' },
+    { id: '6', name: '醫師六', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2' },
+    { id: '7', name: '醫師七', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#6366f1' },
+    { id: '8', name: '醫師八', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0d9488' },
+    { id: '9', name: '醫師九', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e' }
 ];
 
 // Initialize the Application

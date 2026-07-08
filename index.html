@@ -17,6 +17,11 @@
         <!-- Header -->
         <header>
             <div class="brand-section">
+                <button class="btn-toggle-sidebar" id="btn-toggle-sidebar" title="收折/展開側邊欄">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sidebar-toggle-icon">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
                 <div class="logo-icon">🥼</div>
                 <div>
                     <h1>住院醫師排班系統</h1>
@@ -149,23 +154,19 @@
 
         <!-- Main Workspace -->
         <main>
-            <!-- Legend Panel -->
-            <div class="scheduler-legend">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <strong style="font-size: 0.95rem;">班別說明:</strong>
-                    <div class="legend-items">
-                        <div class="legend-item"><span class="shift-badge shift-c1">C1</span> 一線值班 (First-line)</div>
-                        <div class="legend-item"><span class="shift-badge shift-c2">C2</span> 二線值班 (Second-line)</div>
-                        <div class="legend-item"><span class="shift-badge shift-off">O</span> 休假 (Off)</div>
-                    </div>
+            <!-- Calendar View Selector Tabs -->
+            <div class="calendar-tabs">
+                <div style="display: flex; gap: 12px;">
+                    <button class="tab-btn active" id="tab-duty-schedule">住院醫師值班表</button>
+                    <button class="tab-btn" id="tab-spec-schedule">特殊攝影排班表</button>
                 </div>
-                <div style="font-size: 0.8rem; color: var(--text-muted);">
-                    💡 提示: 點擊月曆中的日期卡片即可編輯該天各個班別的人員。
-                </div>
+                <button type="button" class="btn btn-outline" id="btn-toggle-full-view" style="padding: 6px 12px; font-size: 0.85rem; height: 32px; gap: 6px; display: flex; align-items: center;" title="移除高度限制，在單頁中一次看清所有排班日期">
+                    <span>展開完整月曆</span>
+                </button>
             </div>
 
             <!-- Grid Card (Monthly Calendar View) -->
-            <div class="panel-card scheduler-card">
+            <div class="panel-card scheduler-card" id="scheduler-card">
                 <div class="calendar-viewport" id="calendar-viewport">
                     <div class="calendar-container" id="grid-container">
                         <!-- Monthly calendar dynamically rendered here -->
@@ -214,108 +215,168 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="modal-action-title">新增住院醫師</h3>
-                <button class="btn-icon" id="modal-close" style="font-size: 1.5rem; line-height: 1;">&times;</button>
+                <div class="doctor-modal-nav" id="doctor-modal-nav" style="display: none; align-items: center; gap: 8px; margin-left: auto; margin-right: 15px;">
+                    <button type="button" class="btn btn-outline" id="btn-prev-doctor" style="padding: 4px 8px; font-size: 0.8rem; height: 28px; gap: 4px;" title="上一位醫師">
+                        ◀ 上一位
+                    </button>
+                    <button type="button" class="btn btn-outline" id="btn-next-doctor" style="padding: 4px 8px; font-size: 0.8rem; height: 28px; gap: 4px;" title="下一位醫師">
+                        下一位 ▶
+                    </button>
+                </div>
+                <button class="btn-icon" id="modal-close" type="button" style="font-size: 1.5rem; line-height: 1;">&times;</button>
             </div>
             <form id="doctor-form">
                 <input type="hidden" id="doctor-id">
                 
-                <div class="form-group">
-                    <label for="doc-name-input">姓名</label>
-                    <input type="text" id="doc-name-input" required placeholder="例如: 王大明">
-                </div>
+                <div class="modal-form-cols">
+                    <!-- Left Column -->
+                    <div class="modal-form-col">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="doc-name-input">姓名</label>
+                                <input type="text" id="doc-name-input" required placeholder="例如: 王大明">
+                            </div>
+                            <div class="form-group">
+                                <label for="doc-level-input">職級 / 職稱</label>
+                                <select id="doc-level-input" required>
+                                    <option value="CR (總住院醫師)">CR (總住院醫師)</option>
+                                    <option value="R4 (住院醫師)">R4 (住院醫師)</option>
+                                    <option value="R3 (住院醫師)">R3 (住院醫師)</option>
+                                    <option value="R2 (住院醫師)">R2 (住院醫師)</option>
+                                    <option value="R1 (住院醫師)">R1 (住院醫師)</option>
+                                </select>
+                            </div>
+                        </div>
 
-                <div class="form-group">
-                    <label for="doc-level-input">職級 / 職稱</label>
-                    <select id="doc-level-input" required>
-                        <option value="CR (總住院醫師)">CR (總住院醫師)</option>
-                        <option value="R4 (住院醫師)">R4 (住院醫師)</option>
-                        <option value="R3 (住院醫師)">R3 (住院醫師)</option>
-                        <option value="R2 (住院醫師)">R2 (住院醫師)</option>
-                        <option value="R1 (住院醫師)">R1 (住院醫師)</option>
-                    </select>
-                </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>值班人員類別 (可複選)</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="checkbox" name="doc-tiers" id="doc-tier-first" value="first">
+                                        一線人員
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="checkbox" name="doc-tiers" id="doc-tier-second" value="second">
+                                        二線人員
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>週六值班位置資格 (可複選)</label>
+                                <div class="radio-group">
+                                    <label class="radio-label">
+                                        <input type="checkbox" name="doc-sat-positions" id="doc-sat-angio" value="angio" checked>
+                                        血管
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="checkbox" name="doc-sat-positions" id="doc-sat-spec" value="spec" checked>
+                                        特攝
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="checkbox" name="doc-sat-positions" id="doc-sat-inj" value="inj" checked>
+                                        注射
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
 
-                <div class="form-group">
-                    <label>值班人員類別 (可複選)</label>
-                    <div class="radio-group">
-                        <label class="radio-label">
-                            <input type="checkbox" name="doc-tiers" id="doc-tier-first" value="first">
-                            一線人員 (First-line)
-                        </label>
-                        <label class="radio-label">
-                            <input type="checkbox" name="doc-tiers" id="doc-tier-second" value="second">
-                            二線人員 (Second-line)
-                        </label>
+                        <div class="form-row form-row-three">
+                            <div class="form-group">
+                                <label for="doc-shifts-input">每月上限 (班)</label>
+                                <input type="number" id="doc-shifts-input" required min="1" max="31" value="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="doc-color-input">專屬色彩</label>
+                                <input type="color" id="doc-color-input" value="#3b82f6" style="padding: 2px; height: 32px; cursor: pointer; border: 1px solid var(--panel-border); border-radius: var(--border-radius-sm); background: rgba(0,0,0,0.2); width: 100%;">
+                            </div>
+                            <div class="form-group">
+                                <label for="doc-offdays-input">預約休假日期</label>
+                                <input type="text" id="doc-offdays-input" placeholder="例如: 3, 14, 25">
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>每週固定不值班時間</label>
+                            <div class="weekday-checkbox-grid">
+                                <label class="weekday-checkbox-label" id="lbl-wd-0">
+                                    <input type="checkbox" name="doc-off-weekday" value="0">
+                                    日
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-1">
+                                    <input type="checkbox" name="doc-off-weekday" value="1">
+                                    一
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-2">
+                                    <input type="checkbox" name="doc-off-weekday" value="2">
+                                    二
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-3">
+                                    <input type="checkbox" name="doc-off-weekday" value="3">
+                                    三
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-4">
+                                    <input type="checkbox" name="doc-off-weekday" value="4">
+                                    四
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-5">
+                                    <input type="checkbox" name="doc-off-weekday" value="5">
+                                    五
+                                </label>
+                                <label class="weekday-checkbox-label" id="lbl-wd-6">
+                                    <input type="checkbox" name="doc-off-weekday" value="6">
+                                    六
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label>週六值班位置資格 (可複選)</label>
-                    <div class="radio-group">
-                        <label class="radio-label">
-                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-angio" value="angio" checked>
-                            血管攝影室
-                        </label>
-                        <label class="radio-label">
-                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-spec" value="spec" checked>
-                            特殊攝影
-                        </label>
-                        <label class="radio-label">
-                            <input type="checkbox" name="doc-sat-positions" id="doc-sat-inj" value="inj" checked>
-                            注射室
-                        </label>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="doc-color-input">個人專屬色彩</label>
-                    <input type="color" id="doc-color-input" value="#3b82f6" style="padding: 2px; height: 38px; cursor: pointer; border: 1px solid var(--panel-border); border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); width: 100%;">
-                </div>
-
-                <div class="form-group">
-                    <label>每週固定不值班時間 (每週重複避開)</label>
-                    <div class="weekday-checkbox-grid">
-                        <label class="weekday-checkbox-label" id="lbl-wd-0">
-                            <input type="checkbox" name="doc-off-weekday" value="0">
-                            週日
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-1">
-                            <input type="checkbox" name="doc-off-weekday" value="1">
-                            週一
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-2">
-                            <input type="checkbox" name="doc-off-weekday" value="2">
-                            週二
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-3">
-                            <input type="checkbox" name="doc-off-weekday" value="3">
-                            週三
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-4">
-                            <input type="checkbox" name="doc-off-weekday" value="4">
-                            週四
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-5">
-                            <input type="checkbox" name="doc-off-weekday" value="5">
-                            週五
-                        </label>
-                        <label class="weekday-checkbox-label" id="lbl-wd-6">
-                            <input type="checkbox" name="doc-off-weekday" value="6">
-                            週六
-                        </label>
-                    </div>
-                </div>
-
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="doc-shifts-input">每月值班上限 (班)</label>
-                        <input type="number" id="doc-shifts-input" required min="1" max="31" value="10">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="doc-offdays-input">特定預約休假日期</label>
-                        <input type="text" id="doc-offdays-input" placeholder="例如: 3, 14, 25">
-                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">多個日期請用半形逗號分隔</div>
+                    <!-- Right Column -->
+                    <div class="modal-form-col" style="border-left: 1px solid rgba(255,255,255,0.08); padding-left: 1.5rem;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>特殊攝影固定不值班時間 (AM/PM 自訂設定)</label>
+                            <table class="spec-off-table" style="margin-top: 5px;">
+                                <thead>
+                                    <tr>
+                                        <th>星期</th>
+                                        <th>AM (上午段)</th>
+                                        <th>PM (下午段)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>星期一 (Mon)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="1"></td>
+                                        <td><input type="checkbox" name="doc-spec-off-pm" value="1"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>星期二 (Tue)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="2"></td>
+                                        <td><input type="checkbox" name="doc-spec-off-pm" value="2"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>星期三 (Wed)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="3"></td>
+                                        <td><input type="checkbox" name="doc-spec-off-pm" value="3"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>星期四 (Thu)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="4"></td>
+                                        <td><input type="checkbox" name="doc-spec-off-pm" value="4"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>星期五 (Fri)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="5"></td>
+                                        <td><input type="checkbox" name="doc-spec-off-pm" value="5"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>星期六 (Sat)</td>
+                                        <td><input type="checkbox" name="doc-spec-off-am" value="6"></td>
+                                        <td class="disabled-pm-cell">無PM段</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -338,7 +399,7 @@
                 <input type="hidden" id="daily-editor-day">
                 
                 <!-- First-line Duty (C1) -->
-                <div class="daily-editor-section">
+                <div class="daily-editor-section" id="daily-editor-c1-section">
                     <h4 style="color: var(--shift-c1-text);">
                         <span class="shift-badge shift-c1" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C1</span>
                         一線值班 (First-line Duty)
@@ -349,7 +410,7 @@
                 </div>
 
                 <!-- Second-line Duty (C2) -->
-                <div class="daily-editor-section">
+                <div class="daily-editor-section" id="daily-editor-c2-section">
                     <h4 style="color: var(--shift-c2-text);">
                         <span class="shift-badge shift-c2" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C2</span>
                         二線值班 (Second-line Duty)
@@ -377,6 +438,31 @@
                             <label for="sat-select-inj" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">注射室負責人 (Inj)</label>
                             <select id="sat-select-inj" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Special Photography (Only visible in Special Photography view) -->
+                <div id="daily-editor-spec-section" style="display: none;">
+                    <div class="daily-editor-section" id="daily-editor-spec-am-section">
+                        <h4 style="color: var(--accent-cyan); margin-bottom: 10px;">
+                            <span class="shift-badge shift-am" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">AM</span>
+                            上午特殊攝影人員 (AM Staff)
+                        </h4>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <select id="spec-select-am" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                        </div>
+                    </div>
+                    <div class="daily-editor-section" id="daily-editor-spec-pm-section">
+                        <h4 style="color: var(--accent-purple); margin-bottom: 10px;">
+                            <span class="shift-badge shift-pm" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">PM</span>
+                            下午特殊攝影人員 (PM Staff)
+                        </h4>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <select id="spec-select-pm" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                        </div>
+                    </div>
+                    <div id="daily-editor-spec-saturday-note" style="font-size:0.8rem; color:var(--text-secondary); margin-top: 10px; text-align: center; display: none;">
+                        💡 週六特殊攝影人員將直接沿用值班表的「特殊攝影負責人」。
                     </div>
                 </div>
 

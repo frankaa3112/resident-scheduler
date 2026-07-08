@@ -5,8 +5,11 @@ let state = {
     currentMonth: '2026-07', // YYYY-MM
     residents: [],
     schedule: {}, // key: "YYYY-MM", value: { "docId_dayNum": "C1"|"C2"|"O" }
+    specSchedule: {}, // key: "YYYY-MM", value: { "dayNum_AM": "docId", "dayNum_PM": "docId" }
     saturdayAssignments: {}, // key: "YYYY-MM", value: { "dayNum": { angio: "docId", spec: "docId", inj: "docId" } }
     lastMonthLastDayDuty: {}, // key: "YYYY-MM", value: { C1: "docId", C2: "docId" }
+    activeTab: 'duty', // 'duty' | 'spec'
+    fullView: false, // track whether calendar is expanded to show all days
     rules: {
         offWeekdays: true,
         consecutiveDuty: true,
@@ -31,15 +34,15 @@ const SHIFT_TYPES = {
 
 // Initial/Default Doctors List (No PGY, with weekly off-duty weekday settings and multiple tiers)
 const DEFAULT_RESIDENTS = [
-    { id: '1', name: '醫師一', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '2', name: '醫師二', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '3', name: '醫師三', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '4', name: '醫師四', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '5', name: '醫師五', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '6', name: '醫師六', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '7', name: '醫師七', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#6366f1', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '8', name: '醫師八', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0d9488', satPositions: ['angio', 'spec', 'inj'] },
-    { id: '9', name: '醫師九', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e', satPositions: ['angio', 'spec', 'inj'] }
+    { id: '1', name: '醫師一', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '2', name: '醫師二', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '3', name: '醫師三', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '4', name: '醫師四', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '5', name: '醫師五', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '6', name: '醫師六', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '7', name: '醫師七', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#6366f1', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '8', name: '醫師八', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0d9488', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '9', name: '醫師九', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } }
 ];
 
 // Initialize the Application
@@ -55,10 +58,14 @@ function loadData() {
     if (savedState) {
         try {
             state = JSON.parse(savedState);
+            
             // Migrate state residents
             state.residents.forEach((doc, index) => {
                 if (!doc.offWeekdays) {
                     doc.offWeekdays = [];
+                }
+                if (!doc.specOffWeekdays) {
+                    doc.specOffWeekdays = { AM: [], PM: [] };
                 }
                 if (!doc.tiers) {
                     if (doc.tier) {
@@ -83,6 +90,17 @@ function loadData() {
                 const oldSchedule = state.schedule || {};
                 state.schedule = {};
                 state.schedule[state.currentMonth] = oldSchedule;
+            }
+
+            // Ensure specSchedule structure migration
+            if (!state.activeTab) {
+                state.activeTab = 'duty';
+            }
+            if (!state.specSchedule) {
+                state.specSchedule = {};
+            }
+            if (!state.specSchedule[state.currentMonth]) {
+                state.specSchedule[state.currentMonth] = {};
             }
 
             // Ensure saturdayAssignments structure migration
@@ -116,6 +134,15 @@ function loadData() {
                 state.requirements.weekday = { C1: 1, C2: 1 };
                 state.requirements.weekend = { C1: 1, C2: 1 };
             }
+
+            // Ensure zoomLevel is initialized
+            if (state.zoomLevel === undefined) {
+                state.zoomLevel = 1.0;
+            }
+            // Ensure fullView is initialized
+            if (state.fullView === undefined) {
+                state.fullView = localStorage.getItem('calendar_full_view') === 'true';
+            }
             // Strip out D and N assignments from schedule across all months
             Object.keys(state.schedule).forEach(month => {
                 if (state.schedule[month] && typeof state.schedule[month] === 'object') {
@@ -144,10 +171,13 @@ function loadDefaults() {
     };
     state.schedule = {};
     state.schedule[state.currentMonth] = {};
+    state.specSchedule = {};
+    state.specSchedule[state.currentMonth] = {};
     state.saturdayAssignments = {};
     state.saturdayAssignments[state.currentMonth] = {};
     state.lastMonthLastDayDuty = {};
     state.lastMonthLastDayDuty[state.currentMonth] = { C1: "", C2: "" };
+    state.activeTab = 'duty';
     saveData();
 }
 
@@ -184,6 +214,22 @@ function getDoctorColorStyles(docId) {
 
 // Initializing DOM events
 function initEventListeners() {
+    // Sidebar toggle fold/unfold functionality
+    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+    const appContainer = document.querySelector('.app-container');
+    if (btnToggleSidebar && appContainer) {
+        // Load initial state from LocalStorage
+        const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+        if (isCollapsed) {
+            appContainer.classList.add('sidebar-collapsed');
+        }
+        
+        btnToggleSidebar.addEventListener('click', () => {
+            const collapsed = appContainer.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('sidebar_collapsed', collapsed);
+        });
+    }
+
     // Month picker
     const monthInput = document.getElementById('month-select');
     if (monthInput) {
@@ -193,6 +239,35 @@ function initEventListeners() {
             saveData();
             renderAll();
         });
+    }
+
+    // Tabs view switcher
+    const tabDuty = document.getElementById('tab-duty-schedule');
+    const tabSpec = document.getElementById('tab-spec-schedule');
+    if (tabDuty && tabSpec) {
+        if (state.activeTab === 'duty') {
+            tabDuty.classList.add('active');
+            tabSpec.classList.remove('active');
+        } else {
+            tabDuty.classList.remove('active');
+            tabSpec.classList.add('active');
+        }
+
+        const switchTab = (tab) => {
+            state.activeTab = tab;
+            if (tab === 'duty') {
+                tabDuty.classList.add('active');
+                tabSpec.classList.remove('active');
+            } else {
+                tabDuty.classList.remove('active');
+                tabSpec.classList.add('active');
+            }
+            saveData();
+            renderAll();
+        };
+
+        tabDuty.addEventListener('click', () => switchTab('duty'));
+        tabSpec.addEventListener('click', () => switchTab('spec'));
     }
 
     // Add Resident button and modal
@@ -206,12 +281,25 @@ function initEventListeners() {
         addDocBtn.addEventListener('click', () => {
             document.getElementById('modal-action-title').innerText = '新增住院醫師';
             document.getElementById('doctor-id').value = '';
+            
+            // Hide prev/next navigation when adding a new doctor
+            const nav = document.getElementById('doctor-modal-nav');
+            if (nav) nav.style.display = 'none';
+
             doctorForm.reset();
             
             // Clear checked styling
             document.querySelectorAll('input[name="doc-off-weekday"]').forEach(cb => {
                 cb.checked = false;
                 cb.closest('.weekday-checkbox-label').classList.remove('is-checked');
+            });
+
+            // Clear spec off weekdays checked styling
+            document.querySelectorAll('input[name="doc-spec-off-am"]').forEach(cb => {
+                cb.checked = false;
+            });
+            document.querySelectorAll('input[name="doc-spec-off-pm"]').forEach(cb => {
+                cb.checked = false;
             });
             
             // Reset checked tiers checkboxes
@@ -245,61 +333,116 @@ function initEventListeners() {
         });
     });
 
-    // Save resident profile
+
+
+    // Save current doctor form data to state
+    const saveCurrentDoctorFromForm = () => {
+        const id = document.getElementById('doctor-id').value;
+        const name = document.getElementById('doc-name-input').value.trim();
+        const level = document.getElementById('doc-level-input').value;
+        const tiersCheckboxes = document.querySelectorAll('input[name="doc-tiers"]:checked');
+        const tiers = Array.from(tiersCheckboxes).map(cb => cb.value);
+        const color = document.getElementById('doc-color-input').value || '#3b82f6';
+        
+        // Get off weekdays
+        const offWeekdaysCheckboxes = document.querySelectorAll('input[name="doc-off-weekday"]:checked');
+        const offWeekdays = Array.from(offWeekdaysCheckboxes).map(cb => Number(cb.value));
+
+        // Get saturday positions
+        const satPositionsCheckboxes = document.querySelectorAll('input[name="doc-sat-positions"]:checked');
+        const satPositions = Array.from(satPositionsCheckboxes).map(cb => cb.value);
+
+        // Get spec off weekdays
+        const specOffAmCheckboxes = document.querySelectorAll('input[name="doc-spec-off-am"]:checked');
+        const specOffAm = Array.from(specOffAmCheckboxes).map(cb => Number(cb.value));
+        const specOffPmCheckboxes = document.querySelectorAll('input[name="doc-spec-off-pm"]:checked');
+        const specOffPm = Array.from(specOffPmCheckboxes).map(cb => Number(cb.value));
+        const specOffWeekdays = { AM: specOffAm, PM: specOffPm };
+
+        const maxShifts = Number(document.getElementById('doc-shifts-input').value);
+        const offDaysStr = document.getElementById('doc-offdays-input').value;
+        
+        const offDays = offDaysStr.split(',')
+            .map(s => Number(s.trim()))
+            .filter(n => !isNaN(n) && n >= 1 && n <= 31);
+
+        if (!name) {
+            alert('請輸入姓名！');
+            return false;
+        }
+        if (tiers.length === 0) {
+            alert('請至少選擇一種值班類別（一線或二線）！');
+            return false;
+        }
+
+        if (id) {
+            // Edit existing
+            const doc = state.residents.find(r => r.id === id);
+            if (doc) {
+                doc.name = name;
+                doc.level = level;
+                doc.tiers = tiers;
+                doc.offWeekdays = offWeekdays;
+                doc.satPositions = satPositions;
+                doc.maxShifts = maxShifts;
+                doc.offDays = offDays;
+                doc.color = color;
+                doc.specOffWeekdays = specOffWeekdays;
+            }
+        } else {
+            // Add new
+            const newId = (state.residents.length > 0 ? Math.max(...state.residents.map(r => Number(r.id))) + 1 : 1).toString();
+            state.residents.push({ id: newId, name, level, tiers, offWeekdays, satPositions, maxShifts, offDays, color, specOffWeekdays });
+        }
+
+        saveData();
+        return true;
+    };
+
+    // Save resident profile Form submit
     if (doctorForm) {
         doctorForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const id = document.getElementById('doctor-id').value;
-            const name = document.getElementById('doc-name-input').value.trim();
-            const level = document.getElementById('doc-level-input').value;
-            const tiersCheckboxes = document.querySelectorAll('input[name="doc-tiers"]:checked');
-            const tiers = Array.from(tiersCheckboxes).map(cb => cb.value);
-            const color = document.getElementById('doc-color-input').value || '#3b82f6';
-            
-            // Get off weekdays
-            const offWeekdaysCheckboxes = document.querySelectorAll('input[name="doc-off-weekday"]:checked');
-            const offWeekdays = Array.from(offWeekdaysCheckboxes).map(cb => Number(cb.value));
-
-            // Get saturday positions
-            const satPositionsCheckboxes = document.querySelectorAll('input[name="doc-sat-positions"]:checked');
-            const satPositions = Array.from(satPositionsCheckboxes).map(cb => cb.value);
-
-            const maxShifts = Number(document.getElementById('doc-shifts-input').value);
-            const offDaysStr = document.getElementById('doc-offdays-input').value;
-            
-            const offDays = offDaysStr.split(',')
-                .map(s => Number(s.trim()))
-                .filter(n => !isNaN(n) && n >= 1 && n <= 31);
-
-            if (!name) return;
-            if (tiers.length === 0) {
-                alert('請至少選擇一種值班類別（一線或二線）！');
-                return;
+            if (saveCurrentDoctorFromForm()) {
+                hideModal();
+                renderAll();
             }
-
-            if (id) {
-                // Edit existing
-                const doc = state.residents.find(r => r.id === id);
-                if (doc) {
-                    doc.name = name;
-                    doc.level = level;
-                    doc.tiers = tiers;
-                    doc.offWeekdays = offWeekdays;
-                    doc.satPositions = satPositions;
-                    doc.maxShifts = maxShifts;
-                    doc.offDays = offDays;
-                    doc.color = color;
-                }
-            } else {
-                // Add new
-                const newId = (state.residents.length > 0 ? Math.max(...state.residents.map(r => Number(r.id))) + 1 : 1).toString();
-                state.residents.push({ id: newId, name, level, tiers, offWeekdays, satPositions, maxShifts, offDays, color });
-            }
-
-            saveData();
-            hideModal();
-            renderAll();
         });
+    }
+
+    // Prev / Next doctor modal navigation buttons
+    const btnPrevDoctor = document.getElementById('btn-prev-doctor');
+    const btnNextDoctor = document.getElementById('btn-next-doctor');
+
+    const navigateDoctorModal = (direction) => {
+        const currentId = document.getElementById('doctor-id').value;
+        if (!currentId) return; // Cannot navigate in "Add New" mode
+        
+        // Auto save current doctor modifications before switching
+        if (!saveCurrentDoctorFromForm()) return; 
+
+        // Find index of current doctor
+        const currentIndex = state.residents.findIndex(r => r.id === currentId);
+        if (currentIndex === -1) return;
+
+        let targetIndex;
+        if (direction === 'prev') {
+            targetIndex = (currentIndex - 1 + state.residents.length) % state.residents.length;
+        } else {
+            targetIndex = (currentIndex + 1) % state.residents.length;
+        }
+
+        // Apply visual updates to the background
+        renderAll();
+        // Load target doctor details into form fields
+        editDoctor(state.residents[targetIndex].id);
+    };
+
+    if (btnPrevDoctor) {
+        btnPrevDoctor.addEventListener('click', () => navigateDoctorModal('prev'));
+    }
+    if (btnNextDoctor) {
+        btnNextDoctor.addEventListener('click', () => navigateDoctorModal('next'));
     }
 
     // Rules changes
@@ -346,11 +489,19 @@ function initEventListeners() {
     const clearBtn = document.getElementById('btn-clear-schedule');
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
-            if (confirm('確定要清除本月的所有排班嗎？')) {
-                state.schedule[state.currentMonth] = {};
-                state.saturdayAssignments[state.currentMonth] = {};
-                saveData();
-                renderAll();
+            if (state.activeTab === 'spec') {
+                if (confirm('確定要清除本月的所有特殊攝影排班嗎？')) {
+                    state.specSchedule[state.currentMonth] = {};
+                    saveData();
+                    renderAll();
+                }
+            } else {
+                if (confirm('確定要清除本月的所有排班嗎？')) {
+                    state.schedule[state.currentMonth] = {};
+                    state.saturdayAssignments[state.currentMonth] = {};
+                    saveData();
+                    renderAll();
+                }
             }
         });
     }
@@ -434,12 +585,32 @@ function initEventListeners() {
             renderAll();
         });
     }
+
+    // Toggle calendar full view button listener
+    const toggleFullViewBtn = document.getElementById('btn-toggle-full-view');
+    if (toggleFullViewBtn) {
+        toggleFullViewBtn.addEventListener('click', () => {
+            state.fullView = !state.fullView;
+            localStorage.setItem('calendar_full_view', state.fullView);
+            saveData();
+            updateFullViewUI();
+        });
+        
+        // Apply initial visual state based on storage/state
+        updateFullViewUI();
+    }
 }
 
 // Edit doctor info
 function editDoctor(id) {
     const doc = state.residents.find(r => r.id === id);
     if (!doc) return;
+
+    // Show navigation in Edit mode
+    const nav = document.getElementById('doctor-modal-nav');
+    if (nav) {
+        nav.style.display = (state.residents.length > 1) ? 'flex' : 'none';
+    }
 
     document.getElementById('modal-action-title').innerText = '修改住院醫師資料';
     document.getElementById('doctor-id').value = doc.id;
@@ -474,6 +645,31 @@ function editDoctor(id) {
     document.getElementById('doc-offdays-input').value = doc.offDays.join(', ');
     document.getElementById('doc-color-input').value = doc.color || '#3b82f6';
 
+    // Populate specOffWeekdays checkboxes
+    const allSpecAmCheckboxes = document.querySelectorAll('input[name="doc-spec-off-am"]');
+    allSpecAmCheckboxes.forEach(cb => {
+        cb.checked = false;
+    });
+    const allSpecPmCheckboxes = document.querySelectorAll('input[name="doc-spec-off-pm"]');
+    allSpecPmCheckboxes.forEach(cb => {
+        cb.checked = false;
+    });
+
+    if (doc.specOffWeekdays) {
+        (doc.specOffWeekdays.AM || []).forEach(w => {
+            const cb = document.querySelector(`input[name="doc-spec-off-am"][value="${w}"]`);
+            if (cb) {
+                cb.checked = true;
+            }
+        });
+        (doc.specOffWeekdays.PM || []).forEach(w => {
+            const cb = document.querySelector(`input[name="doc-spec-off-pm"][value="${w}"]`);
+            if (cb) {
+                cb.checked = true;
+            }
+        });
+    }
+
     const modal = document.getElementById('doctor-modal');
     modal.classList.add('active');
 }
@@ -502,6 +698,17 @@ function deleteDoctor(id) {
                     if (assign.angio === id) assign.angio = '';
                     if (assign.spec === id) assign.spec = '';
                     if (assign.inj === id) assign.inj = '';
+                });
+            }
+        });
+
+        // Remove specSchedule shifts for this doctor across all months
+        Object.keys(state.specSchedule).forEach(month => {
+            if (state.specSchedule[month] && typeof state.specSchedule[month] === 'object') {
+                Object.keys(state.specSchedule[month]).forEach(key => {
+                    if (state.specSchedule[month][key] === id) {
+                        state.specSchedule[month][key] = '';
+                    }
                 });
             }
         });
@@ -604,6 +811,20 @@ function renderDoctorList() {
             satPositionsText = `<div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">週六無可值位置</div>`;
         }
 
+        // Special photography off weekdays
+        let specOffText = '';
+        if (doc.specOffWeekdays) {
+            const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const amOff = doc.specOffWeekdays.AM || [];
+            const pmOff = doc.specOffWeekdays.PM || [];
+            const parts = [];
+            if (amOff.length > 0) parts.push(`AM 不值: 週${amOff.map(w => weekdaysNames[w]).join('、')}`);
+            if (pmOff.length > 0) parts.push(`PM 不值: 週${pmOff.map(w => weekdaysNames[w]).join('、')}`);
+            if (parts.length > 0) {
+                specOffText = `<div style="font-size:0.7rem; color:#fca5a5; margin-top:2px; font-weight:500;">特攝避開: ${parts.join(' | ')}</div>`;
+            }
+        }
+
         item.innerHTML = `
             <div class="doc-info">
                 <div class="doc-name-container">
@@ -613,6 +834,7 @@ function renderDoctorList() {
                 <div class="doc-level">${doc.level} (限值 ${doc.maxShifts} 班)</div>
                 ${offWeekdaysText}
                 ${satPositionsText}
+                ${specOffText}
             </div>
             <div class="doc-actions">
                 <button class="btn-icon" title="編輯" onclick="editDoctor('${doc.id}')">
@@ -650,7 +872,7 @@ function renderGrid() {
         <div class="calendar-grid">
     `;
 
-    // Render leading empty days (replace last one with prev-month last-day card)
+    // Render leading empty days (replace last one with prev-month last-day card if in duty tab)
     {
         const monthDuty = state.lastMonthLastDayDuty[state.currentMonth] || {};
         const c1Doc = state.residents.find(r => r.id === monthDuty.C1);
@@ -679,14 +901,14 @@ function renderGrid() {
             </div>`;
 
         for (let i = 0; i < firstDayIndex; i++) {
-            if (i === firstDayIndex - 1) {
+            if (i === firstDayIndex - 1 && state.activeTab === 'duty') {
                 html += prevMonthCard;
             } else {
                 html += `<div class="calendar-day-card empty-day"></div>`;
             }
         }
         // If month starts on Monday (firstDayIndex===0), prepend the card before the grid
-        if (firstDayIndex === 0) {
+        if (firstDayIndex === 0 && state.activeTab === 'duty') {
             html = html.replace('<div class="calendar-grid">', `<div class="calendar-grid">` + prevMonthCard);
         }
     }
@@ -708,89 +930,176 @@ function renderGrid() {
         // Check if there are warning violations (excluding general system coverage gaps)
         const hasViolation = state.warnings.some(w => w.day === d && w.docId !== 'sys');
         
-        // Render C1 slots
-        let c1Html = '';
-        if (dayStaff.C1.length === 0) {
-            c1Html = `
-                <div class="day-shift-slot slot-c1 ${req.C1 > 0 ? 'slot-understaffed' : ''}">
-                    <span class="slot-label">C1</span>
-                    <span class="slot-staff">無人</span>
-                </div>
-            `;
-        } else {
-            dayStaff.C1.forEach(doc => {
-                const color = getDoctorColorStyles(doc.id);
-                c1Html += `
-                    <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
-                        <span class="slot-label shift-c1" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C1</span>
-                        <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
-                    </div>
-                `;
-            });
-            if (dayStaff.C1.length < req.C1) {
-                c1Html += `
-                    <div class="day-shift-slot slot-c1 slot-understaffed">
+        let shiftListHtml = '';
+        if (state.activeTab === 'duty') {
+            // Render C1 slots
+            let c1Html = '';
+            if (dayStaff.C1.length === 0) {
+                c1Html = `
+                    <div class="day-shift-slot slot-c1 ${req.C1 > 0 ? 'slot-understaffed' : ''}">
                         <span class="slot-label">C1</span>
-                        <span class="slot-staff">缺人</span>
+                        <span class="slot-staff">無人</span>
                     </div>
                 `;
-            }
-        }
-
-        // Render C2 slots
-        let c2Html = '';
-        if (dayStaff.C2.length === 0) {
-            c2Html = `
-                <div class="day-shift-slot slot-c2 ${req.C2 > 0 ? 'slot-understaffed' : ''}">
-                    <span class="slot-label">C2</span>
-                    <span class="slot-staff">無人</span>
-                </div>
-            `;
-        } else {
-            dayStaff.C2.forEach(doc => {
-                const color = getDoctorColorStyles(doc.id);
-                c2Html += `
-                    <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
-                        <span class="slot-label shift-c2" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C2</span>
-                        <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
-                    </div>
-                `;
-            });
-            if (dayStaff.C2.length < req.C2) {
-                c2Html += `
-                    <div class="day-shift-slot slot-c2 slot-understaffed">
-                        <span class="slot-label">C2</span>
-                        <span class="slot-staff">缺人</span>
-                    </div>
-                `;
-            }
-        }
-
-        // Render saturday positions tags if it's Saturday
-        let satPositionsHtml = '';
-        if (wd.num === 6) {
-            const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
-            const posLabels = { angio: '血管', spec: '特攝', inj: '注射' };
-            
-            ['angio', 'spec', 'inj'].forEach(pos => {
-                const assignedDocId = dayAssign[pos];
-                const doc = state.residents.find(r => r.id === assignedDocId);
-                if (doc) {
-                    satPositionsHtml += `
-                        <div class="sat-position-tag ${pos}">
-                            <span class="sat-position-label">${posLabels[pos]}</span>
-                            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${doc.name}</span>
+            } else {
+                dayStaff.C1.forEach(doc => {
+                    const color = getDoctorColorStyles(doc.id);
+                    c1Html += `
+                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                            <span class="slot-label shift-c1" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C1</span>
+                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
                         </div>
                     `;
-                } else {
-                    satPositionsHtml += `
-                        <div class="sat-position-tag unassigned">
-                            <span class="sat-position-label">${posLabels[pos]}</span>
-                            <span>缺人</span>
+                });
+                if (dayStaff.C1.length < req.C1) {
+                    c1Html += `
+                        <div class="day-shift-slot slot-c1 slot-understaffed">
+                            <span class="slot-label">C1</span>
+                            <span class="slot-staff">缺人</span>
                         </div>
                     `;
                 }
-            });
+            }
+
+            // Render C2 slots
+            let c2Html = '';
+            if (dayStaff.C2.length === 0) {
+                c2Html = `
+                    <div class="day-shift-slot slot-c2 ${req.C2 > 0 ? 'slot-understaffed' : ''}">
+                        <span class="slot-label">C2</span>
+                        <span class="slot-staff">無人</span>
+                    </div>
+                `;
+            } else {
+                dayStaff.C2.forEach(doc => {
+                    const color = getDoctorColorStyles(doc.id);
+                    c2Html += `
+                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                            <span class="slot-label shift-c2" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C2</span>
+                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
+                        </div>
+                    `;
+                });
+                if (dayStaff.C2.length < req.C2) {
+                    c2Html += `
+                        <div class="day-shift-slot slot-c2 slot-understaffed">
+                            <span class="slot-label">C2</span>
+                            <span class="slot-staff">缺人</span>
+                        </div>
+                    `;
+                }
+            }
+
+            // Render saturday positions tags if it's Saturday
+            let satPositionsHtml = '';
+            if (wd.num === 6) {
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                const posLabels = { angio: '血', spec: '特', inj: '注' }; // 簡化為單個字
+                const posFullLabels = { angio: '血管攝影', spec: '特殊攝影', inj: '注射室' };
+                
+                let tagsHtml = '';
+                ['angio', 'spec', 'inj'].forEach(pos => {
+                    const assignedDocId = dayAssign[pos];
+                    const doc = state.residents.find(r => r.id === assignedDocId);
+                    if (doc) {
+                        tagsHtml += `
+                            <div class="sat-position-tag ${pos}" title="${posFullLabels[pos]}: ${doc.name}" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
+                                <span class="sat-position-label" style="padding: 1px 3px; font-size: 0.62rem; margin-right: 3px; border-radius: 2px; line-height: 1;">${posLabels[pos]}</span>
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${doc.name}</span>
+                            </div>
+                        `;
+                    } else {
+                        tagsHtml += `
+                            <div class="sat-position-tag unassigned" title="${posFullLabels[pos]}: 缺人" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
+                                <span class="sat-position-label" style="padding: 1px 3px; font-size: 0.62rem; margin-right: 3px; border-radius: 2px; line-height: 1;">${posLabels[pos]}</span>
+                                <span style="font-style: italic; color: #fca5a5; font-weight: 500;">缺</span>
+                            </div>
+                        `;
+                    }
+                });
+                
+                satPositionsHtml = `
+                    <div class="sat-positions-row" style="display: flex; gap: 4px; width: 100%; margin-top: 4px;">
+                        ${tagsHtml}
+                    </div>
+                `;
+            }
+            shiftListHtml = c1Html + c2Html + satPositionsHtml;
+        } else {
+            // Special Photography (activeTab === 'spec')
+            let amHtml = '';
+            let pmHtml = '';
+            const isSunday = wd.num === 0;
+            const isSaturday = wd.num === 6;
+
+            if (isSunday) {
+                amHtml = `<div class="day-shift-slot" style="opacity:0.4; border-color:transparent;"><span class="slot-label">AM</span><span class="slot-staff">-</span></div>`;
+                pmHtml = `<div class="day-shift-slot" style="opacity:0.4; border-color:transparent;"><span class="slot-label">PM</span><span class="slot-staff">-</span></div>`;
+            } else if (isSaturday) {
+                // Saturday AM: Inherited Saturday Spec doctor
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                const satSpecId = dayAssign.spec;
+                const doc = state.residents.find(r => r.id === satSpecId);
+                if (doc) {
+                    const color = getDoctorColorStyles(doc.id);
+                    amHtml = `
+                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                            <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
+                            <span class="slot-staff" title="${doc.name} (週六特攝)" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
+                        </div>
+                    `;
+                } else {
+                    amHtml = `
+                        <div class="day-shift-slot slot-understaffed">
+                            <span class="slot-label">AM</span>
+                            <span class="slot-staff">未指派 (週六特攝)</span>
+                        </div>
+                    `;
+                }
+                pmHtml = `<div class="day-shift-slot" style="opacity:0.4; border-color:transparent;"><span class="slot-label">PM</span><span class="slot-staff">無 PM</span></div>`;
+            } else {
+                // Monday to Friday
+                const amDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_AM`];
+                const pmDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_PM`];
+
+                const amDoc = state.residents.find(r => r.id === amDocId);
+                const pmDoc = state.residents.find(r => r.id === pmDocId);
+
+                if (amDoc) {
+                    const color = getDoctorColorStyles(amDoc.id);
+                    amHtml = `
+                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                            <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
+                            <span class="slot-staff" title="${amDoc.name}" style="color: ${color.text}; font-weight: 600;">${amDoc.name}</span>
+                        </div>
+                    `;
+                } else {
+                    amHtml = `
+                        <div class="day-shift-slot slot-understaffed">
+                            <span class="slot-label">AM</span>
+                            <span class="slot-staff">缺人</span>
+                        </div>
+                    `;
+                }
+
+                if (pmDoc) {
+                    const color = getDoctorColorStyles(pmDoc.id);
+                    pmHtml = `
+                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                            <span class="slot-label shift-pm" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">PM</span>
+                            <span class="slot-staff" title="${pmDoc.name}" style="color: ${color.text}; font-weight: 600;">${pmDoc.name}</span>
+                        </div>
+                    `;
+                } else {
+                    pmHtml = `
+                        <div class="day-shift-slot slot-understaffed">
+                            <span class="slot-label">PM</span>
+                            <span class="slot-staff">缺人</span>
+                        </div>
+                    `;
+                }
+            }
+            shiftListHtml = amHtml + pmHtml;
         }
 
         html += `
@@ -801,9 +1110,7 @@ function renderGrid() {
                     <span class="day-card-weekday">${wd.name}</span>
                 </div>
                 <div class="day-shift-list">
-                    ${c1Html}
-                    ${c2Html}
-                    ${satPositionsHtml}
+                    ${shiftListHtml}
                 </div>
                 <div class="violation-dot" title="此日排班存在個人衝突警告！"></div>
             </div>
@@ -831,132 +1138,219 @@ function openDailyEditor(day) {
     }
 
     const isLastMonth = (day === 'last-month');
+    const wd = isLastMonth ? null : getWeekday(Number(day));
+
+    // If Special Photography view and it's Sunday, we do not edit
+    if (state.activeTab === 'spec' && !isLastMonth && wd.num === 0) {
+        alert('週日無特殊攝影排班！');
+        return;
+    }
 
     if (isLastMonth) {
         document.getElementById('daily-editor-title').innerText = '上月最後一日 值班設定';
     } else {
-        const wd = getWeekday(day);
-        document.getElementById('daily-editor-title').innerText = `${state.currentMonth}-${day.toString().padStart(2, '0')} (${wd.name}) 排班編輯`;
+        if (state.activeTab === 'spec') {
+            document.getElementById('daily-editor-title').innerText = `${state.currentMonth}-${day.toString().padStart(2, '0')} (${wd.name}) 特殊攝影人員編輯`;
+        } else {
+            document.getElementById('daily-editor-title').innerText = `${state.currentMonth}-${day.toString().padStart(2, '0')} (${wd.name}) 排班編輯`;
+        }
     }
     document.getElementById('daily-editor-day').value = day;
 
-    // Checkboxes containers
+    const c1Section = document.getElementById('daily-editor-c1-section');
+    const c2Section = document.getElementById('daily-editor-c2-section');
+    const satSection = document.getElementById('daily-editor-sat-section');
+    const specSection = document.getElementById('daily-editor-spec-section');
+
     const c1Container = document.getElementById('daily-editor-c1-checkboxes');
     const c2Container = document.getElementById('daily-editor-c2-checkboxes');
 
     c1Container.innerHTML = '';
     c2Container.innerHTML = '';
 
-    // For last-month mode: only show C1/C2 selects, no Saturday section
-    if (isLastMonth) {
-        const monthDuty = state.lastMonthLastDayDuty[state.currentMonth] || {};
+    // Show/hide sections based on activeTab
+    if (state.activeTab === 'duty') {
+        if (c1Section) c1Section.style.display = 'block';
+        if (c2Section) c2Section.style.display = 'block';
+        if (specSection) specSection.style.display = 'none';
 
-        const makeLastMonthSelect = (label, inputId, currentVal, tierFilter) => {
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'margin-bottom:8px;';
-            let optHtml = `<option value="">-- 未值班 --</option>`;
-            state.residents.filter(r => r.tiers && r.tiers.includes(tierFilter)).forEach(doc => {
-                optHtml += `<option value="${doc.id}" ${currentVal === doc.id ? 'selected' : ''}>${doc.name} (${doc.level.split(' ')[0]})</option>`;
-            });
-            wrapper.innerHTML = `<label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">${label}</label><select data-lastmonth-tier="${tierFilter}" style="width:100%; padding:8px; border-radius:var(--border-radius-md); background:rgba(0,0,0,0.2); border:1px solid var(--panel-border); color:var(--text-primary);">${optHtml}</select>`;
-            return wrapper;
-        };
+        // For last-month mode: only show C1/C2 selects, no Saturday section
+        if (isLastMonth) {
+            const monthDuty = state.lastMonthLastDayDuty[state.currentMonth] || {};
 
-        c1Container.appendChild(makeLastMonthSelect('一線值班 (C1) 醫師', 'last-c1-select', monthDuty.C1 || '', 'first'));
-        c2Container.appendChild(makeLastMonthSelect('二線值班 (C2) 醫師', 'last-c2-select', monthDuty.C2 || '', 'second'));
-
-        const satSection = document.getElementById('daily-editor-sat-section');
-        if (satSection) satSection.style.display = 'none';
-
-        const modal = document.getElementById('daily-editor-modal');
-        modal.classList.add('active');
-        return;
-    }
-
-    // Generate checkboxes list
-    state.residents.forEach(doc => {
-        const docCurrentShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${day}`] || 'O';
-
-        const createCheckbox = (shiftCode) => {
-            const isChecked = docCurrentShift === shiftCode;
-            const wrapper = document.createElement('label');
-            wrapper.className = `doctor-checkbox-label ${isChecked ? 'is-checked' : ''}`;
-            wrapper.innerHTML = `
-                <input type="checkbox" data-doc-id="${doc.id}" data-shift="${shiftCode}" ${isChecked ? 'checked' : ''}>
-                <span>${doc.name} <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level.split(' ')[0]}</span></span>
-            `;
-            
-            const checkbox = wrapper.querySelector('input');
-            checkbox.addEventListener('change', handleDailyCheckboxChange);
-            return wrapper;
-        };
-
-        // C1 (First-line Duty) only shows first-line doctors
-        if (doc.tiers && doc.tiers.includes('first')) {
-            c1Container.appendChild(createCheckbox('C1'));
-        }
-
-        // C2 (Second-line Duty) only shows second-line doctors
-        if (doc.tiers && doc.tiers.includes('second')) {
-            c2Container.appendChild(createCheckbox('C2'));
-        }
-    });
-
-    // Saturday Positions block
-    const wd = getWeekday(Number(day));
-    const satSection = document.getElementById('daily-editor-sat-section');
-    if (satSection) {
-        if (wd.num === 6) {
-            satSection.style.display = 'block';
-            
-            const selectAngio = document.getElementById('sat-select-angio');
-            const selectSpec = document.getElementById('sat-select-spec');
-            const selectInj = document.getElementById('sat-select-inj');
-            
-            // Find Saturday and Friday duty docs for recommendation
-            const satDocs = [];
-            state.residents.forEach(r => {
-                const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${day}`] || 'O';
-                if (s === 'C1' || s === 'C2') satDocs.push({ doc: r, status: `週六${s}` });
-            });
-            const friDocs = [];
-            if (day > 1) {
-                state.residents.forEach(r => {
-                    const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${day - 1}`] || 'O';
-                    if (s === 'C1' || s === 'C2') friDocs.push({ doc: r, status: `週五${s}` });
+            const makeLastMonthSelect = (label, inputId, currentVal, tierFilter) => {
+                const wrapper = document.createElement('div');
+                wrapper.style.cssText = 'margin-bottom:8px;';
+                let optHtml = `<option value="">-- 未值班 --</option>`;
+                state.residents.filter(r => r.tiers && r.tiers.includes(tierFilter)).forEach(doc => {
+                    optHtml += `<option value="${doc.id}" ${currentVal === doc.id ? 'selected' : ''}>${doc.name} (${doc.level.split(' ')[0]})</option>`;
                 });
-            }
-
-            const getOptionsHtml = (posCode) => {
-                let optHtml = '<option value="">-- 未指派 --</option>';
-                const dutyDocs = [...satDocs, ...friDocs];
-                dutyDocs.forEach(item => {
-                    const doc = item.doc;
-                    const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
-                    const qualText = hasQual ? '' : ' (無此位置資格)';
-                    optHtml += `<option value="${doc.id}">★ ${doc.name} (${item.status})${qualText}</option>`;
-                });
-                optHtml += '<option disabled>──────────</option>';
-                state.residents.forEach(doc => {
-                    if (dutyDocs.some(item => item.doc.id === doc.id)) return;
-                    const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
-                    const qualText = hasQual ? '' : ' (無此位置資格)';
-                    optHtml += `<option value="${doc.id}">${doc.name}${qualText}</option>`;
-                });
-                return optHtml;
+                wrapper.innerHTML = `<label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">${label}</label><select data-lastmonth-tier="${tierFilter}" style="width:100%; padding:8px; border-radius:var(--border-radius-md); background:rgba(0,0,0,0.2); border:1px solid var(--panel-border); color:var(--text-primary);">${optHtml}</select>`;
+                return wrapper;
             };
 
-            selectAngio.innerHTML = getOptionsHtml('angio');
-            selectSpec.innerHTML = getOptionsHtml('spec');
-            selectInj.innerHTML = getOptionsHtml('inj');
+            c1Container.appendChild(makeLastMonthSelect('一線值班 (C1) 醫師', 'last-c1-select', monthDuty.C1 || '', 'first'));
+            c2Container.appendChild(makeLastMonthSelect('二線值班 (C2) 醫師', 'last-c2-select', monthDuty.C2 || '', 'second'));
 
-            // Select current values
-            const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[day] || {};
-            selectAngio.value = dayAssign.angio || '';
-            selectSpec.value = dayAssign.spec || '';
-            selectInj.value = dayAssign.inj || '';
+            if (satSection) satSection.style.display = 'none';
+
+            const modal = document.getElementById('daily-editor-modal');
+            modal.classList.add('active');
+            return;
+        }
+
+        // Generate checkboxes list
+        state.residents.forEach(doc => {
+            const docCurrentShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${day}`] || 'O';
+
+            const createCheckbox = (shiftCode) => {
+                const isChecked = docCurrentShift === shiftCode;
+                const wrapper = document.createElement('label');
+                wrapper.className = `doctor-checkbox-label ${isChecked ? 'is-checked' : ''}`;
+                wrapper.innerHTML = `
+                    <input type="checkbox" data-doc-id="${doc.id}" data-shift="${shiftCode}" ${isChecked ? 'checked' : ''}>
+                    <span>${doc.name} <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level.split(' ')[0]}</span></span>
+                `;
+                
+                const checkbox = wrapper.querySelector('input');
+                checkbox.addEventListener('change', handleDailyCheckboxChange);
+                return wrapper;
+            };
+
+            // C1 (First-line Duty) only shows first-line doctors
+            if (doc.tiers && doc.tiers.includes('first')) {
+                c1Container.appendChild(createCheckbox('C1'));
+            }
+
+            // C2 (Second-line Duty) only shows second-line doctors
+            if (doc.tiers && doc.tiers.includes('second')) {
+                c2Container.appendChild(createCheckbox('C2'));
+            }
+        });
+
+        // Saturday Positions block
+        if (satSection) {
+            if (wd.num === 6) {
+                satSection.style.display = 'block';
+                
+                const selectAngio = document.getElementById('sat-select-angio');
+                const selectSpec = document.getElementById('sat-select-spec');
+                const selectInj = document.getElementById('sat-select-inj');
+                
+                // Find Saturday and Friday duty docs for recommendation
+                const satDocs = [];
+                state.residents.forEach(r => {
+                    const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${day}`] || 'O';
+                    if (s === 'C1' || s === 'C2') satDocs.push({ doc: r, status: `週六${s}` });
+                });
+                const friDocs = [];
+                if (day > 1) {
+                    state.residents.forEach(r => {
+                        const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${day - 1}`] || 'O';
+                        if (s === 'C1' || s === 'C2') friDocs.push({ doc: r, status: `週五${s}` });
+                    });
+                } else {
+                    const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                    const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                    if (prevC1) {
+                        const doc = state.residents.find(r => r.id === prevC1);
+                        if (doc) friDocs.push({ doc, status: '週五C1' });
+                    }
+                    if (prevC2) {
+                        const doc = state.residents.find(r => r.id === prevC2);
+                        if (doc) friDocs.push({ doc, status: '週五C2' });
+                    }
+                }
+
+                const getOptionsHtml = (posCode) => {
+                    let optHtml = '<option value="">-- 未指派 --</option>';
+                    const dutyDocs = [...satDocs, ...friDocs];
+                    dutyDocs.forEach(item => {
+                        const doc = item.doc;
+                        const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
+                        const qualText = hasQual ? '' : ' (無此位置資格)';
+                        optHtml += `<option value="${doc.id}">★ ${doc.name} (${item.status})${qualText}</option>`;
+                    });
+                    optHtml += '<option disabled>──────────</option>';
+                    state.residents.forEach(doc => {
+                        if (dutyDocs.some(item => item.doc.id === doc.id)) return;
+                        const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
+                        const qualText = hasQual ? '' : ' (無此位置資格)';
+                        optHtml += `<option value="${doc.id}">${doc.name}${qualText}</option>`;
+                    });
+                    return optHtml;
+                };
+
+                selectAngio.innerHTML = getOptionsHtml('angio');
+                selectSpec.innerHTML = getOptionsHtml('spec');
+                selectInj.innerHTML = getOptionsHtml('inj');
+
+                // Select current values
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[day] || {};
+                selectAngio.value = dayAssign.angio || '';
+                selectSpec.value = dayAssign.spec || '';
+                selectInj.value = dayAssign.inj || '';
+            } else {
+                satSection.style.display = 'none';
+            }
+        }
+    } else {
+        // activeTab === 'spec'
+        if (c1Section) c1Section.style.display = 'none';
+        if (c2Section) c2Section.style.display = 'none';
+        if (satSection) satSection.style.display = 'none';
+        if (specSection) specSection.style.display = 'block';
+
+        const selectAm = document.getElementById('spec-select-am');
+        const selectPm = document.getElementById('spec-select-pm');
+        const pmSection = document.getElementById('daily-editor-spec-pm-section');
+        const satNote = document.getElementById('daily-editor-spec-saturday-note');
+
+        // Filter doctors with spec qualification
+        const specQualifiedDocs = state.residents.filter(r => r.satPositions && r.satPositions.includes('spec'));
+
+        const getSpecOptionsHtml = () => {
+            let optHtml = '<option value="">-- 未指派 --</option>';
+            specQualifiedDocs.forEach(doc => {
+                optHtml += `<option value="${doc.id}">${doc.name} (${doc.level.split(' ')[0]})</option>`;
+            });
+            return optHtml;
+        };
+
+        if (wd.num === 6) {
+            // Saturday: AM is inherited and read-only, PM is hidden
+            if (satNote) satNote.style.display = 'block';
+            if (pmSection) pmSection.style.display = 'none';
+            if (selectAm) {
+                selectAm.disabled = true;
+                // Saturday AM inherits from saturdayAssignments spec
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[day] || {};
+                const satSpecId = dayAssign.spec || '';
+                
+                // Populate options including the Saturday spec doctor (even if unqualified)
+                let amOpts = '<option value="">-- 未指派 --</option>';
+                state.residents.forEach(doc => {
+                    amOpts += `<option value="${doc.id}">${doc.name} (${doc.level.split(' ')[0]})</option>`;
+                });
+                selectAm.innerHTML = amOpts;
+                selectAm.value = satSpecId;
+            }
         } else {
-            satSection.style.display = 'none';
+            // Monday to Friday: AM and PM editable
+            if (satNote) satNote.style.display = 'none';
+            if (pmSection) pmSection.style.display = 'block';
+            if (selectAm) {
+                selectAm.disabled = false;
+                selectAm.innerHTML = getSpecOptionsHtml();
+                const currentAm = (state.specSchedule[state.currentMonth] || {})[`${day}_AM`] || '';
+                selectAm.value = currentAm;
+            }
+            if (selectPm) {
+                selectPm.disabled = false;
+                selectPm.innerHTML = getSpecOptionsHtml();
+                const currentPm = (state.specSchedule[state.currentMonth] || {})[`${day}_PM`] || '';
+                selectPm.value = currentPm;
+            }
         }
     }
 
@@ -1003,39 +1397,62 @@ function saveDailyShifts() {
         return;
     }
 
-    if (!state.schedule[state.currentMonth]) {
-        state.schedule[state.currentMonth] = {};
-    }
-
-    state.residents.forEach(doc => {
-        const checkboxes = document.querySelectorAll(`#daily-editor-modal input[data-doc-id="${doc.id}"]`);
-        let chosenShift = 'O'; // default to off
-
-        checkboxes.forEach(cb => {
-            if (cb.checked) {
-                chosenShift = cb.dataset.shift;
-            }
-        });
-
-        state.schedule[state.currentMonth][`${doc.id}_${day}`] = chosenShift;
-    });
-
-    // Save saturday assignments
-    const wd = getWeekday(Number(day));
-    if (wd.num === 6) {
-        const selectAngio = document.getElementById('sat-select-angio');
-        const selectSpec = document.getElementById('sat-select-spec');
-        const selectInj = document.getElementById('sat-select-inj');
-        
-        if (!state.saturdayAssignments[state.currentMonth]) {
-            state.saturdayAssignments[state.currentMonth] = {};
+    if (state.activeTab === 'spec') {
+        const wd = getWeekday(Number(day));
+        if (!state.specSchedule[state.currentMonth]) {
+            state.specSchedule[state.currentMonth] = {};
         }
 
-        state.saturdayAssignments[state.currentMonth][day] = {
-            angio: selectAngio ? selectAngio.value : '',
-            spec: selectSpec ? selectSpec.value : '',
-            inj: selectInj ? selectInj.value : ''
-        };
+        if (wd.num === 6) {
+            // Saturday: PM is empty, AM is inherited (no need to save in specSchedule)
+            delete state.specSchedule[state.currentMonth][`${day}_AM`];
+            delete state.specSchedule[state.currentMonth][`${day}_PM`];
+        } else if (wd.num === 0) {
+            // Sunday: empty
+            delete state.specSchedule[state.currentMonth][`${day}_AM`];
+            delete state.specSchedule[state.currentMonth][`${day}_PM`];
+        } else {
+            // Monday to Friday
+            const selectAm = document.getElementById('spec-select-am');
+            const selectPm = document.getElementById('spec-select-pm');
+            state.specSchedule[state.currentMonth][`${day}_AM`] = selectAm ? selectAm.value : '';
+            state.specSchedule[state.currentMonth][`${day}_PM`] = selectPm ? selectPm.value : '';
+        }
+    } else {
+        if (!state.schedule[state.currentMonth]) {
+            state.schedule[state.currentMonth] = {};
+        }
+
+        state.residents.forEach(doc => {
+            const checkboxes = document.querySelectorAll(`#daily-editor-modal input[data-doc-id="${doc.id}"]`);
+            let chosenShift = 'O'; // default to off
+
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    chosenShift = cb.dataset.shift;
+                }
+            });
+
+            state.schedule[state.currentMonth][`${doc.id}_${day}`] = chosenShift;
+        });
+
+        // Save saturday assignments
+        const wd = getWeekday(Number(day));
+        if (wd.num === 6) {
+            const selectAngio = document.getElementById('sat-select-angio');
+            const selectSpec = document.getElementById('sat-select-spec');
+            const selectInj = document.getElementById('sat-select-inj');
+            
+            if (!state.saturdayAssignments[state.currentMonth]) {
+                state.saturdayAssignments[state.currentMonth] = {};
+            }
+
+            state.saturdayAssignments[state.currentMonth][day] = {
+                angio: selectAngio ? selectAngio.value : '',
+                spec: selectSpec ? selectSpec.value : '',
+                inj: selectInj ? selectInj.value : ''
+            };
+        }
     }
 
     saveData();
@@ -1050,281 +1467,477 @@ function validateSchedule() {
 
     if (state.residents.length === 0) return;
 
-    state.residents.forEach(doc => {
-        let docShiftsCount = 0;
-
+    if (state.activeTab === 'spec') {
+        // Special Photography Validator
         for (let d = 1; d <= daysCount; d++) {
-            const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
             const wd = getWeekday(d);
+            if (wd.num === 0) continue; // Sunday: no special photography
 
-            if (shift !== 'O') {
-                docShiftsCount++;
-            }
+            const isSaturday = wd.num === 6;
 
-            // 1. Weekly Off-duty Weekday Checker (避開特定星期幾)
-            if (state.rules.offWeekdays && doc.offWeekdays && doc.offWeekdays.includes(wd.num)) {
-                if (shift === 'C1' || shift === 'C2') {
+            if (isSaturday) {
+                // Saturday AM: Inherited Saturday Spec doctor
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                const satSpecId = dayAssign.spec;
+                
+                if (!satSpecId) {
                     state.warnings.push({
-                        docId: doc.id,
-                        docName: doc.name,
+                        docId: 'sys',
+                        docName: '系統',
                         day: d,
-                        type: 'offWeekdays',
-                        message: `${doc.name} 於週${wd.name} (${d} 號) 設定不值班，但被排了 [${SHIFT_TYPES[shift].name.split(' ')[0]}]`
+                        type: 'coverage',
+                        message: `${d} 號週六 [上午特殊攝影] 未指派醫師 (沿用值班表週六特攝負責人)`
+                    });
+                } else {
+                    const doc = state.residents.find(r => r.id === satSpecId);
+                    if (doc) {
+                        // Check eligibility
+                        if (doc.satPositions && !doc.satPositions.includes('spec')) {
+                            state.warnings.push({
+                                docId: doc.id,
+                                docName: doc.name,
+                                day: d,
+                                type: 'satPosEligibility',
+                                message: `${doc.name} 被指派為週六特攝人員 (沿用)，但其未具備特殊攝影資格`
+                            });
+                        }
+                        // Check vacation
+                        if (doc.offDays && doc.offDays.includes(d)) {
+                            state.warnings.push({
+                                docId: doc.id,
+                                docName: doc.name,
+                                day: d,
+                                type: 'offDays',
+                                message: `${doc.name} 於預約休假日 (${d} 號) 被排了特殊攝影 (沿用)`
+                            });
+                        }
+                        // Check weekly off AM
+                        if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(6)) {
+                            state.warnings.push({
+                                docId: doc.id,
+                                docName: doc.name,
+                                day: d,
+                                type: 'specOffWeekdays',
+                                message: `${doc.name} 設定週六 AM 不值特攝，但被排了 AM 特攝 (沿用)`
+                            });
+                        }
+                    }
+                }
+            } else {
+                // Monday to Friday
+                const amDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_AM`];
+                const pmDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_PM`];
+
+                const amDoc = state.residents.find(r => r.id === amDocId);
+                const pmDoc = state.residents.find(r => r.id === pmDocId);
+
+                // 1. Coverage check
+                if (!amDocId) {
+                    state.warnings.push({
+                        docId: 'sys',
+                        docName: '系統',
+                        day: d,
+                        type: 'coverage',
+                        message: `${d} 號 [上午特殊攝影] 未指派醫師`
                     });
                 }
-            }
+                if (!pmDocId) {
+                    state.warnings.push({
+                        docId: 'sys',
+                        docName: '系統',
+                        day: d,
+                        type: 'coverage',
+                        message: `${d} 號 [下午特殊攝影] 未指派醫師`
+                    });
+                }
 
-            // 2. No Consecutive Duties: Duty shift (C1 or C2) on consecutive days
-            const isDuty = (s) => s === 'C1' || s === 'C2';
-            if (state.rules.consecutiveDuty && isDuty(shift)) {
-                if (d < daysCount) {
-                    const nextShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d + 1}`] || 'O';
-                    if (isDuty(nextShift)) {
+                // 2. Same-day double assignment
+                if (amDocId && pmDocId && amDocId === pmDocId) {
+                    state.warnings.push({
+                        docId: amDoc.id,
+                        docName: amDoc.name,
+                        day: d,
+                        type: 'doubleAssignment',
+                        message: `${amDoc.name} 於 ${d} 號同時被排了 AM 與 PM 特殊攝影`
+                    });
+                }
+
+                // 3. Validation for AM doctor
+                if (amDoc) {
+                    // Qualification check
+                    if (amDoc.satPositions && !amDoc.satPositions.includes('spec')) {
                         state.warnings.push({
-                            docId: doc.id,
-                            docName: doc.name,
-                            day: d + 1,
-                            type: 'consecutiveDuty',
-                            message: `${doc.name} 連續於 ${d} 號及 ${d + 1} 號值班 (違反連續值班限制)`
+                            docId: amDoc.id,
+                            docName: amDoc.name,
+                            day: d,
+                            type: 'specEligibility',
+                            message: `${amDoc.name} 於 ${d} 號被排了 AM 特殊攝影，但其無特殊攝影資格`
+                        });
+                    }
+                    // Vacation check
+                    if (amDoc.offDays && amDoc.offDays.includes(d)) {
+                        state.warnings.push({
+                            docId: amDoc.id,
+                            docName: amDoc.name,
+                            day: d,
+                            type: 'offDays',
+                            message: `${amDoc.name} 於預約休假日 (${d} 號) 被排了 AM 特殊攝影`
+                        });
+                    }
+                    // Weekday off AM check
+                    if (amDoc.specOffWeekdays && amDoc.specOffWeekdays.AM && amDoc.specOffWeekdays.AM.includes(wd.num)) {
+                        state.warnings.push({
+                            docId: amDoc.id,
+                            docName: amDoc.name,
+                            day: d,
+                            type: 'specOffWeekdays',
+                            message: `${amDoc.name} 設定週${wd.name} AM 不值特攝，但被排了 AM 特攝`
                         });
                     }
                 }
-                // Check cross-month consecutive duty for Day 1
-                if (d === 1) {
-                    const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
-                    const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
-                    if (doc.id === prevC1 || doc.id === prevC2) {
+
+                // 4. Validation for PM doctor
+                if (pmDoc) {
+                    // Qualification check
+                    if (pmDoc.satPositions && !pmDoc.satPositions.includes('spec')) {
                         state.warnings.push({
-                            docId: doc.id,
-                            docName: doc.name,
-                            day: 1,
-                            type: 'consecutiveDuty',
-                            message: `${doc.name} 連續於上月最後一天及本月 1 號值班 (違反連續值班限制)`
+                            docId: pmDoc.id,
+                            docName: pmDoc.name,
+                            day: d,
+                            type: 'specEligibility',
+                            message: `${pmDoc.name} 於 ${d} 號被排了 PM 特殊攝影，但其無特殊攝影資格`
                         });
+                    }
+                    // Vacation check
+                    if (pmDoc.offDays && pmDoc.offDays.includes(d)) {
+                        state.warnings.push({
+                            docId: pmDoc.id,
+                            docName: pmDoc.name,
+                            day: d,
+                            type: 'offDays',
+                            message: `${pmDoc.name} 於預約休假日 (${d} 號) 被排了 PM 特殊攝影`
+                        });
+                    }
+                    // Weekday off PM check
+                    if (pmDoc.specOffWeekdays && pmDoc.specOffWeekdays.PM && pmDoc.specOffWeekdays.PM.includes(wd.num)) {
+                        state.warnings.push({
+                            docId: pmDoc.id,
+                            docName: pmDoc.name,
+                            day: d,
+                            type: 'specOffWeekdays',
+                            message: `${pmDoc.name} 設定週${wd.name} PM 不值特攝，但被排了 PM 特攝`
+                        });
+                    }
+
+                    // 5. PM restriction: previous day duty check
+                    const isDuty = (s) => s === 'C1' || s === 'C2';
+                    if (d === 1) {
+                        // Cross-month check
+                        const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                        const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                        if (pmDoc.id === prevC1 || pmDoc.id === prevC2) {
+                            state.warnings.push({
+                                docId: pmDoc.id,
+                                docName: pmDoc.name,
+                                day: 1,
+                                type: 'prevDayDutyPM',
+                                message: `${pmDoc.name} 上月最後一天值班，不可排在 1 號 PM 特殊攝影`
+                            });
+                        }
+                    } else {
+                        // Regular day checks: check if pmDoc had duty on day d-1
+                        const prevShift = (state.schedule[state.currentMonth] || {})[`${pmDoc.id}_${d - 1}`] || 'O';
+                        if (isDuty(prevShift)) {
+                            state.warnings.push({
+                                docId: pmDoc.id,
+                                docName: pmDoc.name,
+                                day: d,
+                                type: 'prevDayDutyPM',
+                                message: `${pmDoc.name} 前一日 (${d - 1} 號) 值班，不可排在隔日 (${d} 號) PM 特殊攝影`
+                            });
+                        }
                     }
                 }
             }
+        }
+    } else {
+        // Original Resident Duty Scheduler Validation
+        state.residents.forEach(doc => {
+            let docShiftsCount = 0;
 
-            // 2b. Avoid QOD (隔日值班) constraint
-            if (state.rules.avoidQod && isDuty(shift)) {
-                if (d < daysCount - 1) {
-                    const afterNextShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d + 2}`] || 'O';
-                    if (isDuty(afterNextShift)) {
+            for (let d = 1; d <= daysCount; d++) {
+                const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
+                const wd = getWeekday(d);
+
+                if (shift !== 'O') {
+                    docShiftsCount++;
+                }
+
+                // 1. Weekly Off-duty Weekday Checker (避開特定星期幾)
+                if (state.rules.offWeekdays && doc.offWeekdays && doc.offWeekdays.includes(wd.num)) {
+                    if (shift === 'C1' || shift === 'C2') {
                         state.warnings.push({
                             docId: doc.id,
                             docName: doc.name,
-                            day: d + 2,
-                            type: 'avoidQod',
-                            message: `${doc.name} 於 ${d} 號與 ${d + 2} 號間隔一日值班 (違反 QOD 限制)`
+                            day: d,
+                            type: 'offWeekdays',
+                            message: `${doc.name} 於週${wd.name} (${d} 號) 設定不值班，但被排了 [${SHIFT_TYPES[shift].name.split(' ')[0]}]`
                         });
                     }
                 }
-                // Check cross-month QOD duty for Day 2
-                if (d === 2) {
-                    const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_1`] || 'O';
-                    if (prevShift === 'O') {
+
+                // 2. No Consecutive Duties: Duty shift (C1 or C2) on consecutive days
+                const isDuty = (s) => s === 'C1' || s === 'C2';
+                if (state.rules.consecutiveDuty && isDuty(shift)) {
+                    if (d < daysCount) {
+                        const nextShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d + 1}`] || 'O';
+                        if (isDuty(nextShift)) {
+                            state.warnings.push({
+                                docId: doc.id,
+                                docName: doc.name,
+                                day: d + 1,
+                                type: 'consecutiveDuty',
+                                message: `${doc.name} 連續於 ${d} 號及 ${d + 1} 號值班 (違反連續值班限制)`
+                            });
+                        }
+                    }
+                    // Check cross-month consecutive duty for Day 1
+                    if (d === 1) {
                         const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
                         const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
                         if (doc.id === prevC1 || doc.id === prevC2) {
                             state.warnings.push({
                                 docId: doc.id,
                                 docName: doc.name,
-                                day: 2,
-                                type: 'avoidQod',
-                                message: `${doc.name} 於上月最後一天與本月 2 號間隔一日值班 (違反 QOD 限制)`
+                                day: 1,
+                                type: 'consecutiveDuty',
+                                message: `${doc.name} 連續於上月最後一天及本月 1 號值班 (違反連續值班限制)`
                             });
                         }
                     }
                 }
-            }
 
-            // 3. Preferred Off Days: Assigned work shifts on preferred off days
-            if (state.rules.offDays && doc.offDays.includes(d)) {
-                if (shift !== 'O') {
+                // 2b. Avoid QOD (隔日值班) constraint
+                if (state.rules.avoidQod && isDuty(shift)) {
+                    if (d < daysCount - 1) {
+                        const afterNextShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d + 2}`] || 'O';
+                        if (isDuty(afterNextShift)) {
+                            state.warnings.push({
+                                docId: doc.id,
+                                docName: doc.name,
+                                day: d + 2,
+                                type: 'avoidQod',
+                                message: `${doc.name} 於 ${d} 號與 ${d + 2} 號間隔一日值班 (違反 QOD 限制)`
+                            });
+                        }
+                    }
+                    // Check cross-month QOD duty for Day 2
+                    if (d === 2) {
+                        const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_1`] || 'O';
+                        if (prevShift === 'O') {
+                            const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                            const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                            if (doc.id === prevC1 || doc.id === prevC2) {
+                                state.warnings.push({
+                                    docId: doc.id,
+                                    docName: doc.name,
+                                    day: 2,
+                                    type: 'avoidQod',
+                                    message: `${doc.name} 於上月最後一天與本月 2 號間隔一日值班 (違反 QOD 限制)`
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // 3. Preferred Off Days: Assigned work shifts on preferred off days
+                if (state.rules.offDays && doc.offDays.includes(d)) {
+                    if (shift !== 'O') {
+                        state.warnings.push({
+                            docId: doc.id,
+                            docName: doc.name,
+                            day: d,
+                            type: 'offDays',
+                            message: `${doc.name} 於預約休假日 (${d} 號) 被排了 [${SHIFT_TYPES[shift].name.split(' ')[0]}]`
+                        });
+                    }
+                }
+
+                // 4. Tier Eligibility
+                if (shift === 'C1' && (!doc.tiers || !doc.tiers.includes('first'))) {
                     state.warnings.push({
                         docId: doc.id,
                         docName: doc.name,
                         day: d,
-                        type: 'offDays',
-                        message: `${doc.name} 於預約休假日 (${d} 號) 被排了 [${SHIFT_TYPES[shift].name.split(' ')[0]}]`
+                        type: 'tierEligibility',
+                        message: `${doc.name} 於 ${d} 號被排了一線值班 (C1)，但其無一線資格`
+                    });
+                }
+                if (shift === 'C2' && (!doc.tiers || !doc.tiers.includes('second'))) {
+                    state.warnings.push({
+                        docId: doc.id,
+                        docName: doc.name,
+                        day: d,
+                        type: 'tierEligibility',
+                        message: `${doc.name} 於 ${d} 號被排了二線值班 (C2)，但其無二線資格`
                     });
                 }
             }
 
-            // 4. Tier Eligibility
-            if (shift === 'C1' && (!doc.tiers || !doc.tiers.includes('first'))) {
+            // 5. Max Shifts Exceeded
+            if (state.rules.maxShifts && docShiftsCount > doc.maxShifts) {
                 state.warnings.push({
                     docId: doc.id,
                     docName: doc.name,
-                    day: d,
-                    type: 'tierEligibility',
-                    message: `${doc.name} 於 ${d} 號被排了一線值班 (C1)，但其無一線資格`
+                    day: null,
+                    type: 'maxShifts',
+                    message: `${doc.name} 本月值班數為 ${docShiftsCount} 班，超出設定上限 ${doc.maxShifts} 班`
                 });
-            }
-            if (shift === 'C2' && (!doc.tiers || !doc.tiers.includes('second'))) {
-                state.warnings.push({
-                    docId: doc.id,
-                    docName: doc.name,
-                    day: d,
-                    type: 'tierEligibility',
-                    message: `${doc.name} 於 ${d} 號被排了二線值班 (C2)，但其無二線資格`
-                });
-            }
-        }
-
-        // 5. Max Shifts Exceeded
-        if (state.rules.maxShifts && docShiftsCount > doc.maxShifts) {
-            state.warnings.push({
-                docId: doc.id,
-                docName: doc.name,
-                day: null,
-                type: 'maxShifts',
-                message: `${doc.name} 本月值班數為 ${docShiftsCount} 班，超出設定上限 ${doc.maxShifts} 班`
-            });
-        }
-    });
-
-    // 6. Shift coverage check
-    for (let d = 1; d <= daysCount; d++) {
-        const wd = getWeekday(d);
-        const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
-
-        let counts = { C1: 0, C2: 0 };
-        state.residents.forEach(doc => {
-            const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-            if (shift in counts) {
-                counts[shift]++;
             }
         });
 
-        if (counts.C1 < req.C1) {
-            state.warnings.push({
-                docId: 'sys',
-                docName: '系統',
-                day: d,
-                type: 'coverage',
-                message: `${d} 號 [一線值班] 人力不足！目前 ${counts.C1} 人，需求至少 ${req.C1} 人`
-            });
-        }
-        if (counts.C2 < req.C2) {
-            state.warnings.push({
-                docId: 'sys',
-                docName: '系統',
-                day: d,
-                type: 'coverage',
-                message: `${d} 號 [二線值班] 人力不足！目前 ${counts.C2} 人，需求至少 ${req.C2} 人`
-            });
-        }
-    }
+        // 6. Shift coverage check
+        for (let d = 1; d <= daysCount; d++) {
+            const wd = getWeekday(d);
+            const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
 
-    // 7. Saturday Special Positions Checker
-    for (let d = 1; d <= daysCount; d++) {
-        const wd = getWeekday(d);
-        if (wd.num !== 6) continue;
+            let counts = { C1: 0, C2: 0 };
+            state.residents.forEach(doc => {
+                const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
+                if (shift in counts) {
+                    counts[shift]++;
+                }
+            });
 
-        const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
-        const posMap = { angio: '血管攝影室', spec: '特殊攝影', inj: '注射室' };
-        
-        // 7.1 Coverage check
-        ['angio', 'spec', 'inj'].forEach(pos => {
-            if (!dayAssign[pos]) {
+            if (counts.C1 < req.C1) {
                 state.warnings.push({
                     docId: 'sys',
                     docName: '系統',
                     day: d,
                     type: 'coverage',
-                    message: `${d} 號週六 [${posMap[pos]}] 未指派負責人員`
+                    message: `${d} 號 [一線值班] 人力不足！目前 ${counts.C1} 人，需求至少 ${req.C1} 人`
                 });
             }
-        });
+            if (counts.C2 < req.C2) {
+                state.warnings.push({
+                    docId: 'sys',
+                    docName: '系統',
+                    day: d,
+                    type: 'coverage',
+                    message: `${d} 號 [二線值班] 人力不足！目前 ${counts.C2} 人，需求至少 ${req.C2} 人`
+                });
+            }
+        }
 
-        // Collect assigned doctors
-        const assignedDocs = [];
-        const assignedIds = new Set();
-        let hasDuplicate = false;
+        // 7. Saturday Special Positions Checker
+        for (let d = 1; d <= daysCount; d++) {
+            const wd = getWeekday(d);
+            if (wd.num !== 6) continue;
 
-        ['angio', 'spec', 'inj'].forEach(pos => {
-            const id = dayAssign[pos];
-            if (id) {
-                const doc = state.residents.find(r => r.id === id);
-                if (doc) {
-                    assignedDocs.push({ pos, doc });
-                    if (assignedIds.has(id)) {
-                        hasDuplicate = true;
+            const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+            const posMap = { angio: '血管攝影室', spec: '特殊攝影', inj: '注射室' };
+            
+            // 7.1 Coverage check
+            ['angio', 'spec', 'inj'].forEach(pos => {
+                if (!dayAssign[pos]) {
+                    state.warnings.push({
+                        docId: 'sys',
+                        docName: '系統',
+                        day: d,
+                        type: 'coverage',
+                        message: `${d} 號週六 [${posMap[pos]}] 未指派負責人員`
+                    });
+                }
+            });
+
+            // Collect assigned doctors
+            const assignedDocs = [];
+            const assignedIds = new Set();
+            let hasDuplicate = false;
+
+            ['angio', 'spec', 'inj'].forEach(pos => {
+                const id = dayAssign[pos];
+                if (id) {
+                    const doc = state.residents.find(r => r.id === id);
+                    if (doc) {
+                        assignedDocs.push({ pos, doc });
+                        if (assignedIds.has(id)) {
+                            hasDuplicate = true;
+                        }
+                        assignedIds.add(id);
                     }
-                    assignedIds.add(id);
                 }
-            }
-        });
-
-        // 7.2 Qualification checks
-        assignedDocs.forEach(item => {
-            if (item.doc.satPositions && !item.doc.satPositions.includes(item.pos)) {
-                state.warnings.push({
-                    docId: item.doc.id,
-                    docName: item.doc.name,
-                    day: d,
-                    type: 'satPosEligibility',
-                    message: `${item.doc.name} 被指派負責週六 [${posMap[item.pos]}]，但其未具備此位置資格`
-                });
-            }
-        });
-
-        // 7.3 Duplicate check
-        if (hasDuplicate) {
-            state.warnings.push({
-                docId: 'sys',
-                docName: '系統',
-                day: d,
-                type: 'coverage',
-                message: `${d} 號週六負責人指派重複`
-            });
-        }
-
-        // 7.4 Friday / Saturday duty match check
-        if (assignedDocs.length === 3 && !hasDuplicate) {
-            const satDutyIds = [];
-            state.residents.forEach(r => {
-                const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${d}`] || 'O';
-                if (s === 'C1' || s === 'C2') satDutyIds.push(r.id);
             });
 
-            const friDutyIds = [];
-            if (d > 1) {
-                state.residents.forEach(r => {
-                    const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${d - 1}`] || 'O';
-                    if (s === 'C1' || s === 'C2') friDutyIds.push(r.id);
-                });
-            } else {
-                const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
-                const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
-                if (prevC1) friDutyIds.push(prevC1);
-                if (prevC2) friDutyIds.push(prevC2);
-            }
-
-            let satCount = 0;
-            let friCount = 0;
-            let otherCount = 0;
-
+            // 7.2 Qualification checks
             assignedDocs.forEach(item => {
-                const id = item.doc.id;
-                if (satDutyIds.includes(id)) {
-                    satCount++;
-                } else if (friDutyIds.includes(id)) {
-                    friCount++;
-                } else {
-                    otherCount++;
+                if (item.doc.satPositions && !item.doc.satPositions.includes(item.pos)) {
+                    state.warnings.push({
+                        docId: item.doc.id,
+                        docName: item.doc.name,
+                        day: d,
+                        type: 'satPosEligibility',
+                        message: `${item.doc.name} 被指派負責週六 [${posMap[item.pos]}]，但其未具備此位置資格`
+                    });
                 }
             });
 
-            if (satCount !== 2 || friCount !== 1 || otherCount > 0) {
+            // 7.3 Duplicate check
+            if (hasDuplicate) {
                 state.warnings.push({
                     docId: 'sys',
                     docName: '系統',
                     day: d,
                     type: 'coverage',
-                    message: `${d} 號週六特殊位置指派與值班表不符 (應有 2 人為週六值班醫師，1 人為週五值班醫師)`
+                    message: `${d} 號週六負責人指派重複`
                 });
+            }
+
+            // 7.4 Friday / Saturday duty match check
+            if (assignedDocs.length === 3 && !hasDuplicate) {
+                const satDutyIds = [];
+                state.residents.forEach(r => {
+                    const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${d}`] || 'O';
+                    if (s === 'C1' || s === 'C2') satDutyIds.push(r.id);
+                });
+
+                const friDutyIds = [];
+                if (d > 1) {
+                    state.residents.forEach(r => {
+                        const s = (state.schedule[state.currentMonth] || {})[`${r.id}_${d - 1}`] || 'O';
+                        if (s === 'C1' || s === 'C2') friDutyIds.push(r.id);
+                    });
+                } else {
+                    const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                    const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                    if (prevC1) friDutyIds.push(prevC1);
+                    if (prevC2) friDutyIds.push(prevC2);
+                }
+
+                let satCount = 0;
+                let friCount = 0;
+                let otherCount = 0;
+
+                assignedDocs.forEach(item => {
+                    const id = item.doc.id;
+                    if (satDutyIds.includes(id)) {
+                        satCount++;
+                    } else if (friDutyIds.includes(id)) {
+                        friCount++;
+                    } else {
+                        otherCount++;
+                    }
+                });
+
+                if (satCount !== 2 || friCount !== 1 || otherCount > 0) {
+                    state.warnings.push({
+                        docId: 'sys',
+                        docName: '系統',
+                        day: d,
+                        type: 'coverage',
+                        message: `${d} 號週六特殊位置指派與值班表不符 (應有 2 人為週六值班醫師，1 人為週五值班醫師)`
+                    });
+                }
             }
         }
     }
@@ -1367,6 +1980,8 @@ function renderWarnings() {
 
 // Render doctor workload breakdown and limits
 function renderStats() {
+    const header = document.querySelector('.stats-card table thead');
+    const titleLabel = document.querySelector('.stats-card .panel-title span');
     const body = document.getElementById('stats-table-body');
     if (!body) return;
 
@@ -1378,55 +1993,138 @@ function renderStats() {
         return;
     }
 
-    state.residents.forEach(doc => {
-        let stats = { C1: 0, C2: 0, O: 0 };
-        let weekendDutyCount = 0;
+    if (state.activeTab === 'spec') {
+        // Special Photography statistics
+        if (titleLabel) titleLabel.innerText = '特殊攝影排班統計 (班數分佈)';
+        if (header) {
+            header.innerHTML = `
+                <tr>
+                    <th>醫師姓名</th>
+                    <th>特攝總班數</th>
+                    <th>上午班 (AM)</th>
+                    <th>下午班 (PM)</th>
+                    <th>週六特攝數</th>
+                </tr>
+            `;
+        }
 
-        for (let d = 1; d <= daysCount; d++) {
-            const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-            if (shift in stats) stats[shift]++;
+        state.residents.forEach(doc => {
+            let amCount = 0;
+            let pmCount = 0;
+            let satCount = 0;
 
-            const isDuty = (s) => s === 'C1' || s === 'C2';
-            if (isDuty(shift) && getWeekday(d).isWeekend) {
-                weekendDutyCount++;
+            for (let d = 1; d <= daysCount; d++) {
+                const wd = getWeekday(d);
+                if (wd.num === 0) continue; // Sunday
+
+                if (wd.num === 6) {
+                    // Saturday AM is inherited
+                    const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                    if (dayAssign.spec === doc.id) {
+                        amCount++;
+                        satCount++;
+                    }
+                } else {
+                    // Monday to Friday
+                    const amDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_AM`];
+                    const pmDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_PM`];
+                    if (amDocId === doc.id) amCount++;
+                    if (pmDocId === doc.id) pmCount++;
+                }
             }
+
+            const totalShifts = amCount + pmCount;
+            const limitRatio = Math.min((totalShifts / 10) * 100, 100);
+            let progressColor = 'var(--accent-cyan)';
+            if (totalShifts > 10) progressColor = 'var(--color-danger)';
+            else if (totalShifts === 10) progressColor = 'var(--color-warning)';
+
+            const color = getDoctorColorStyles(doc.id);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color.bg}; margin-right:6px; vertical-align:middle;"></span>
+                    <strong>${doc.name}</strong> 
+                    <br>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level}</span>
+                </td>
+                <td>
+                    <div class="stats-bar-container">
+                        <div class="stats-bar" style="width: ${limitRatio}%; background-color: ${progressColor};"></div>
+                    </div>
+                    <span>${totalShifts} 班</span>
+                </td>
+                <td><span class="shift-badge shift-am" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">AM</span> ${amCount}</td>
+                <td><span class="shift-badge shift-pm" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">PM</span> ${pmCount}</td>
+                <td><span>${satCount}</span></td>
+            `;
+            body.appendChild(tr);
+        });
+    } else {
+        // Original Resident Duty statistics
+        if (titleLabel) titleLabel.innerText = '排班統計 (班數上限與分佈)';
+        if (header) {
+            header.innerHTML = `
+                <tr>
+                    <th>醫師姓名</th>
+                    <th>總值班數 / 上限</th>
+                    <th>一線值班 (C1)</th>
+                    <th>二線值班 (C2)</th>
+                    <th>週末值班數</th>
+                </tr>
+            `;
         }
 
-        const totalShifts = stats.C1 + stats.C2;
-        const limitRatio = Math.min((totalShifts / doc.maxShifts) * 100, 100);
-        
-        let progressColor = 'var(--accent-cyan)';
-        if (totalShifts > doc.maxShifts) progressColor = 'var(--color-danger)';
-        else if (totalShifts === doc.maxShifts) progressColor = 'var(--color-warning)';
+        state.residents.forEach(doc => {
+            let stats = { C1: 0, C2: 0, O: 0 };
+            let weekendDutyCount = 0;
 
-        let tierBadges = '';
-        if (doc.tiers) {
-            if (doc.tiers.includes('first')) tierBadges += '<span class="tier-badge tier-first">一線</span>';
-            if (doc.tiers.includes('second')) tierBadges += '<span class="tier-badge tier-second">二線</span>';
-        }
+            for (let d = 1; d <= daysCount; d++) {
+                const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
+                if (shift in stats) stats[shift]++;
 
-        const color = getDoctorColorStyles(doc.id);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>
-                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color.bg}; margin-right:6px; vertical-align:middle;"></span>
-                <strong>${doc.name}</strong> 
-                ${tierBadges}
-                <br>
-                <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level}</span>
-            </td>
-            <td>
-                <div class="stats-bar-container">
-                    <div class="stats-bar" style="width: ${limitRatio}%; background-color: ${progressColor};"></div>
-                </div>
-                <span>${totalShifts} / ${doc.maxShifts}</span>
-            </td>
-            <td><span class="shift-badge shift-c1" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">C1</span> ${stats.C1}</td>
-            <td><span class="shift-badge shift-c2" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">C2</span> ${stats.C2}</td>
-            <td><span>${weekendDutyCount}</span></td>
-        `;
-        body.appendChild(tr);
-    });
+                const isDuty = (s) => s === 'C1' || s === 'C2';
+                if (isDuty(shift) && getWeekday(d).isWeekend) {
+                    weekendDutyCount++;
+                }
+            }
+
+            const totalShifts = stats.C1 + stats.C2;
+            const limitRatio = Math.min((totalShifts / doc.maxShifts) * 100, 100);
+            
+            let progressColor = 'var(--accent-cyan)';
+            if (totalShifts > doc.maxShifts) progressColor = 'var(--color-danger)';
+            else if (totalShifts === doc.maxShifts) progressColor = 'var(--color-warning)';
+
+            let tierBadges = '';
+            if (doc.tiers) {
+                if (doc.tiers.includes('first')) tierBadges += '<span class="tier-badge tier-first">一線</span>';
+                if (doc.tiers.includes('second')) tierBadges += '<span class="tier-badge tier-second">二線</span>';
+            }
+
+            const color = getDoctorColorStyles(doc.id);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color.bg}; margin-right:6px; vertical-align:middle;"></span>
+                    <strong>${doc.name}</strong> 
+                    ${tierBadges}
+                    <br>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level}</span>
+                </td>
+                <td>
+                    <div class="stats-bar-container">
+                        <div class="stats-bar" style="width: ${limitRatio}%; background-color: ${progressColor};"></div>
+                    </div>
+                    <span>${totalShifts} / ${doc.maxShifts}</span>
+                </td>
+                <td><span class="shift-badge shift-c1" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">C1</span> ${stats.C1}</td>
+                <td><span class="shift-badge shift-c2" style="width:20px; height:20px; font-size:0.7rem; margin-right:4px;">C2</span> ${stats.C2}</td>
+                <td><span>${weekendDutyCount}</span></td>
+            `;
+            body.appendChild(tr);
+        });
+    }
 }
 
 // Auto-scheduling heuristic solver
@@ -1440,18 +2138,235 @@ function runAutoScheduler() {
     loader.classList.add('active');
 
     setTimeout(() => {
-        const success = solveSchedule();
+        const success = (state.activeTab === 'spec') ? solveSpecSchedule() : solveSchedule();
         loader.classList.remove('active');
         
         if (success) {
             saveData();
             renderAll();
         } else {
-            alert('排班演算法無法在限制內找到完美排班。已產生衝突最少的草稿，請點擊格子手動調整衝突處。');
+            if (state.activeTab === 'spec') {
+                alert('排班演算法無法在限制內找到完美的特殊攝影排班。已產生衝突最少的草稿，請點擊格子手動調整。');
+            } else {
+                alert('排班演算法無法在限制內找到完美值班排班。已產生衝突最少的草稿，請點擊格子手動調整衝突處。');
+            }
             saveData();
             renderAll();
         }
     }, 600);
+}
+
+// Special Photography heuristic CSP solver
+function solveSpecSchedule() {
+    const daysCount = getDaysInMonth();
+    const MAX_ATTEMPTS = 300;
+    let bestSchedule = null;
+    let bestViolationCount = Infinity;
+
+    // Filter doctors with spec qualification
+    const specQualifiedDocs = state.residents.filter(r => r.satPositions && r.satPositions.includes('spec'));
+    if (specQualifiedDocs.length === 0) {
+        return false;
+    }
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        let tempSpecSchedule = {};
+        let docWorkloads = {};
+        
+        specQualifiedDocs.forEach(doc => {
+            docWorkloads[doc.id] = 0;
+        });
+
+        let success = true;
+
+        for (let d = 1; d <= daysCount; d++) {
+            const wd = getWeekday(d);
+            if (wd.num === 0) continue; // Sunday
+
+            if (wd.num === 6) {
+                // Saturday AM: Inherited Saturday Spec doctor
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                const satSpecId = dayAssign.spec;
+                if (satSpecId && docWorkloads[satSpecId] !== undefined) {
+                    docWorkloads[satSpecId]++;
+                }
+                continue;
+            }
+
+            // Monday to Friday: AM and PM
+            // 1. Assign AM
+            let amCandidates = specQualifiedDocs.filter(doc => {
+                // Vacation check
+                if (doc.offDays && doc.offDays.includes(d)) return false;
+                // Weekday off AM check
+                if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(wd.num)) return false;
+                return true;
+            });
+
+            if (amCandidates.length === 0) {
+                success = false;
+                break;
+            }
+
+            // Sort AM candidates by workload + slight randomness
+            amCandidates.sort((a, b) => {
+                let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
+                let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
+                return scoreA - scoreB;
+            });
+
+            const amDoc = amCandidates[0];
+            tempSpecSchedule[`${d}_AM`] = amDoc.id;
+            docWorkloads[amDoc.id]++;
+
+            // 2. Assign PM
+            let pmCandidates = specQualifiedDocs.filter(doc => {
+                // Cannot be the same doctor as AM on the same day if possible
+                if (doc.id === amDoc.id && amCandidates.length > 1) return false;
+                // Vacation check
+                if (doc.offDays && doc.offDays.includes(d)) return false;
+                // Weekday off PM check
+                if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) return false;
+                
+                // PM restriction: previous day duty check
+                const isDuty = (s) => s === 'C1' || s === 'C2';
+                if (d === 1) {
+                    // Cross-month check
+                    const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                    const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                    if (doc.id === prevC1 || doc.id === prevC2) return false;
+                } else {
+                    const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d - 1}`] || 'O';
+                    if (isDuty(prevShift)) return false;
+                }
+                return true;
+            });
+
+            // If pmCandidates is empty, fallback to allow same-day double assignment if needed
+            if (pmCandidates.length === 0) {
+                pmCandidates = specQualifiedDocs.filter(doc => {
+                    if (doc.offDays && doc.offDays.includes(d)) return false;
+                    if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) return false;
+                    
+                    const isDuty = (s) => s === 'C1' || s === 'C2';
+                    if (d === 1) {
+                        const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                        const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                        if (doc.id === prevC1 || doc.id === prevC2) return false;
+                    } else {
+                        const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d - 1}`] || 'O';
+                        if (isDuty(prevShift)) return false;
+                    }
+                    return true;
+                });
+            }
+
+            if (pmCandidates.length === 0) {
+                success = false;
+                break;
+            }
+
+            // Sort PM candidates by workload + slight randomness
+            pmCandidates.sort((a, b) => {
+                let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
+                let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
+                return scoreA - scoreB;
+            });
+
+            const pmDoc = pmCandidates[0];
+            tempSpecSchedule[`${d}_PM`] = pmDoc.id;
+            docWorkloads[pmDoc.id]++;
+        }
+
+        let currentViolations = countTempSpecViolations(tempSpecSchedule, daysCount);
+
+        if (success && currentViolations === 0) {
+            state.specSchedule[state.currentMonth] = tempSpecSchedule;
+            return true;
+        }
+
+        if (currentViolations < bestViolationCount) {
+            bestViolationCount = currentViolations;
+            bestSchedule = tempSpecSchedule;
+        }
+    }
+
+    if (bestSchedule) {
+        state.specSchedule[state.currentMonth] = bestSchedule;
+    }
+    return false;
+}
+
+// Count rule violations of a temporary Special Photography schedule
+function countTempSpecViolations(tempSpecSchedule, daysCount) {
+    let violations = 0;
+
+    for (let d = 1; d <= daysCount; d++) {
+        const wd = getWeekday(d);
+        if (wd.num === 0) continue; // Sunday
+
+        if (wd.num === 6) {
+            // Saturday AM: Inherited Saturday Spec doctor
+            const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+            const satSpecId = dayAssign.spec;
+            if (!satSpecId) {
+                violations += 10;
+            } else {
+                const doc = state.residents.find(r => r.id === satSpecId);
+                if (doc) {
+                    if (doc.satPositions && !doc.satPositions.includes('spec')) violations += 50;
+                    if (doc.offDays && doc.offDays.includes(d)) violations += 100;
+                    if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(6)) violations += 20;
+                }
+            }
+        } else {
+            // Monday to Friday
+            const amDocId = tempSpecSchedule[`${d}_AM`];
+            const pmDocId = tempSpecSchedule[`${d}_PM`];
+
+            if (!amDocId) violations += 10;
+            if (!pmDocId) violations += 10;
+
+            if (amDocId && pmDocId && amDocId === pmDocId) {
+                violations += 5;
+            }
+
+            if (amDocId) {
+                const amDoc = state.residents.find(r => r.id === amDocId);
+                if (amDoc) {
+                    if (amDoc.satPositions && !amDoc.satPositions.includes('spec')) violations += 50;
+                    if (amDoc.offDays && amDoc.offDays.includes(d)) violations += 100;
+                    if (amDoc.specOffWeekdays && amDoc.specOffWeekdays.AM && amDoc.specOffWeekdays.AM.includes(wd.num)) violations += 20;
+                }
+            }
+
+            if (pmDocId) {
+                const pmDoc = state.residents.find(r => r.id === pmDocId);
+                if (pmDoc) {
+                    if (pmDoc.satPositions && !pmDoc.satPositions.includes('spec')) violations += 50;
+                    if (pmDoc.offDays && pmDoc.offDays.includes(d)) violations += 100;
+                    if (pmDoc.specOffWeekdays && pmDoc.specOffWeekdays.PM && pmDoc.specOffWeekdays.PM.includes(wd.num)) violations += 20;
+
+                    // PM restriction: previous day duty check
+                    const isDuty = (s) => s === 'C1' || s === 'C2';
+                    if (d === 1) {
+                        const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                        const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                        if (pmDoc.id === prevC1 || pmDoc.id === prevC2) {
+                            violations += 80;
+                        }
+                    } else {
+                        const prevShift = (state.schedule[state.currentMonth] || {})[`${pmDoc.id}_${d - 1}`] || 'O';
+                        if (isDuty(prevShift)) {
+                            violations += 80;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return violations;
 }
 
 // Helper to find a valid assignment for a given Saturday day in a temporary schedule
@@ -1499,6 +2414,12 @@ function findSaturdayAssignment(day, tempSchedule) {
                     [1, 0, 2], [1, 2, 0],
                     [2, 0, 1], [2, 1, 0]
                 ];
+
+                // Shuffle permutations to give equal opportunities for all role assignments
+                for (let idx = permutations.length - 1; idx > 0; idx--) {
+                    const rIdx = Math.floor(Math.random() * (idx + 1));
+                    [permutations[idx], permutations[rIdx]] = [permutations[rIdx], permutations[idx]];
+                }
 
                 for (let p of permutations) {
                     const assign = {
@@ -1794,71 +2715,170 @@ function exportToCSV() {
     const daysCount = getDaysInMonth();
     let csvRows = [];
     
-    let headers = ['醫師姓名', '職級', '值班類別', '不值班星期', '值班上限'];
-    for (let d = 1; d <= daysCount; d++) {
-        headers.push(`${d}日(${getWeekday(d).name})`);
-    }
-    headers.push('總值班數', '一線值班(C1)', '二線值班(C2)');
-    csvRows.push(headers.join(','));
-
-    state.residents.forEach(doc => {
-        const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
-        const offWeekdaysNameList = doc.offWeekdays.map(w => weekdaysNames[w]).join(';');
-        const tiersList = [];
-        if (doc.tiers) {
-            if (doc.tiers.includes('first')) tiersList.push('一線');
-            if (doc.tiers.includes('second')) tiersList.push('二線');
-        }
-        const tierName = tiersList.join('+') + '人員';
-        
-        let row = [doc.name, doc.level, tierName, offWeekdaysNameList, doc.maxShifts];
-        let c1Count = 0, c2Count = 0;
-
+    if (state.activeTab === 'spec') {
+        let headers = ['醫師姓名', '職級', '特攝 AM 不值星期', '特攝 PM 不值星期'];
         for (let d = 1; d <= daysCount; d++) {
-            let shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-            const wd = getWeekday(d);
+            headers.push(`${d}日(${getWeekday(d).name})`);
+        }
+        headers.push('特攝總班數', '上午班(AM)', '下午班(PM)');
+        csvRows.push(headers.join(','));
+
+        state.residents.forEach(doc => {
+            const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const amOffNames = (doc.specOffWeekdays?.AM || []).map(w => weekdaysNames[w]).join(';');
+            const pmOffNames = (doc.specOffWeekdays?.PM || []).map(w => weekdaysNames[w]).join(';');
             
-            if (wd.num === 6) {
-                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
-                let posText = '';
-                if (dayAssign.angio === doc.id) posText = '血管攝影';
-                else if (dayAssign.spec === doc.id) posText = '特殊攝影';
-                else if (dayAssign.inj === doc.id) posText = '注射室';
-                
-                if (posText) {
-                    if (shift === 'O') {
-                        shift = `(${posText})`;
-                    } else {
-                        shift = `${shift}(${posText})`;
+            let row = [doc.name, doc.level, amOffNames, pmOffNames];
+            let amCount = 0, pmCount = 0;
+
+            for (let d = 1; d <= daysCount; d++) {
+                const wd = getWeekday(d);
+                let shiftText = 'O';
+
+                if (wd.num === 0) {
+                    shiftText = 'O';
+                } else if (wd.num === 6) {
+                    const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                    if (dayAssign.spec === doc.id) {
+                        shiftText = 'AM';
+                        amCount++;
+                    }
+                } else {
+                    const amDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_AM`];
+                    const pmDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_PM`];
+                    
+                    const isAm = amDocId === doc.id;
+                    const isPm = pmDocId === doc.id;
+
+                    if (isAm && isPm) {
+                        shiftText = 'AM+PM';
+                        amCount++;
+                        pmCount++;
+                    } else if (isAm) {
+                        shiftText = 'AM';
+                        amCount++;
+                    } else if (isPm) {
+                        shiftText = 'PM';
+                        pmCount++;
                     }
                 }
+                row.push(shiftText);
             }
 
-            row.push(shift);
-            
-            // Calculate shift counts using original values
-            const origShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-            if (origShift === 'C1') c1Count++;
-            else if (origShift === 'C2') c2Count++;
+            row.push(amCount + pmCount);
+            row.push(amCount);
+            row.push(pmCount);
+
+            csvRows.push(row.join(','));
+        });
+
+        const csvContent = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `特殊攝影排班表_${state.currentMonth}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } else {
+        let headers = ['醫師姓名', '職級', '值班類別', '不值班星期', '值班上限'];
+        for (let d = 1; d <= daysCount; d++) {
+            headers.push(`${d}日(${getWeekday(d).name})`);
         }
+        headers.push('總值班數', '一線值班(C1)', '二線值班(C2)');
+        csvRows.push(headers.join(','));
 
-        row.push(c1Count + c2Count);
-        row.push(c1Count);
-        row.push(c2Count);
+        state.residents.forEach(doc => {
+            const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const offWeekdaysNameList = doc.offWeekdays.map(w => weekdaysNames[w]).join(';');
+            const tiersList = [];
+            if (doc.tiers) {
+                if (doc.tiers.includes('first')) tiersList.push('一線');
+                if (doc.tiers.includes('second')) tiersList.push('二線');
+            }
+            const tierName = tiersList.join('+') + '人員';
+            
+            let row = [doc.name, doc.level, tierName, offWeekdaysNameList, doc.maxShifts];
+            let c1Count = 0, c2Count = 0;
 
-        csvRows.push(row.join(','));
-    });
+            for (let d = 1; d <= daysCount; d++) {
+                let shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
+                const wd = getWeekday(d);
+                
+                if (wd.num === 6) {
+                    const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                    let posText = '';
+                    if (dayAssign.angio === doc.id) posText = '血管攝影';
+                    else if (dayAssign.spec === doc.id) posText = '特殊攝影';
+                    else if (dayAssign.inj === doc.id) posText = '注射室';
+                    
+                    if (posText) {
+                        if (shift === 'O') {
+                            shift = `(${posText})`;
+                        } else {
+                            shift = `${shift}(${posText})`;
+                        }
+                    }
+                }
 
-    const csvContent = '\uFEFF' + csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `住院醫師值班表_${state.currentMonth}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+                row.push(shift);
+                
+                // Calculate shift counts using original values
+                const origShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
+                if (origShift === 'C1') c1Count++;
+                else if (origShift === 'C2') c2Count++;
+            }
+
+            row.push(c1Count + c2Count);
+            row.push(c1Count);
+            row.push(c2Count);
+
+            csvRows.push(row.join(','));
+        });
+
+        const csvContent = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `住院醫師值班表_${state.currentMonth}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
 }
+
+// Update calendar full view UI (expand to show all days or constraint height)
+function updateFullViewUI() {
+    const card = document.getElementById('scheduler-card');
+    const btn = document.getElementById('btn-toggle-full-view');
+    if (!card || !btn) return;
+    
+    if (state.fullView) {
+        card.classList.add('full-view');
+        btn.innerHTML = `
+            <svg style="width: 14px; height: 14px; fill: currentColor; margin-right: 6px;" viewBox="0 0 24 24">
+                <path d="M4 19h6v2H2v-8h2v6zm16 0v-6h2v8h-8v-2h6zM4 5v6H2V3h8v2H4zm16 0h-6V3h8v8h-2V5z"/>
+            </svg>
+            <span>適應螢幕高度</span>
+        `;
+        btn.classList.add('active');
+    } else {
+        card.classList.remove('full-view');
+        btn.innerHTML = `
+            <svg style="width: 14px; height: 14px; fill: currentColor; margin-right: 6px;" viewBox="0 0 24 24">
+                <path d="M10 21H4v-6H2v8h8v-2zm4 0h6v-6h2v8h-8v-2zM10 3H4v6H2V1h8v2zm4 0h6v6h2V1h-8v2z" transform="rotate(45, 12, 12)"/>
+            </svg>
+            <span>展開完整月曆</span>
+        `;
+        btn.classList.remove('active');
+    }
+}
+

@@ -60,7 +60,7 @@ body {
 /* App Layout Grid */
 .app-container {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: auto 1fr;
     grid-template-rows: auto 1fr;
     grid-template-areas: 
         "header header"
@@ -200,6 +200,61 @@ aside {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    
+    /* 側邊欄折疊相關設定 */
+    width: 320px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                border-right-color 0.3s ease;
+    overflow-x: hidden;
+}
+
+/* 摺疊狀態下的側邊欄樣式 */
+.sidebar-collapsed aside {
+    width: 0;
+    padding: 0;
+    opacity: 0;
+    border-right-color: transparent;
+    pointer-events: none;
+}
+
+/* 側邊欄摺疊 Toggle 按鈕 */
+.btn-toggle-sidebar {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: var(--border-radius-md);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition-smooth);
+    margin-right: 12px;
+}
+
+.btn-toggle-sidebar:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--accent-cyan);
+    border-color: rgba(6, 182, 212, 0.4);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.2);
+}
+
+.sidebar-collapsed .btn-toggle-sidebar {
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--accent-cyan);
+    border-color: rgba(6, 182, 212, 0.3);
+}
+
+.sidebar-toggle-icon {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-collapsed .sidebar-toggle-icon {
+    transform: rotate(180deg);
 }
 
 .panel-card {
@@ -1185,3 +1240,255 @@ main {
     margin-right: 4px;
 }
 
+.calendar-tabs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.tab-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--panel-border);
+    color: var(--text-secondary);
+    padding: 8px 18px;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: var(--transition-smooth);
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+    color: #ffffff;
+    border-color: transparent;
+    box-shadow: 0 4px 12px var(--accent-cyan-glow);
+}
+
+/* Special Photography Shift Colors */
+.shift-am {
+    background: rgba(6, 182, 212, 0.12);
+    border-color: rgba(6, 182, 212, 0.35);
+    color: var(--accent-cyan);
+}
+
+.shift-pm {
+    background: rgba(168, 85, 247, 0.12);
+    border-color: rgba(168, 85, 247, 0.35);
+    color: var(--accent-purple);
+}
+
+/* Special Photography Off-duty Grid Table */
+.spec-off-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(15, 23, 42, 0.3);
+}
+
+.spec-off-table th {
+    background: rgba(30, 41, 59, 0.6);
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 12px 10px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.spec-off-table th:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+
+.spec-off-table td {
+    padding: 12px 10px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    vertical-align: middle;
+    color: var(--text-primary);
+}
+
+.spec-off-table td:first-child {
+    text-align: left;
+    padding-left: 20px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.spec-off-table input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background-color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    transition: var(--transition-smooth);
+    margin: 0;
+    vertical-align: middle;
+}
+
+.spec-off-table input[type="checkbox"]:checked {
+    background-color: var(--accent-cyan);
+    border-color: var(--accent-cyan);
+}
+
+.spec-off-table input[type="checkbox"]:checked::after {
+    content: "✓";
+    font-size: 13px;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.disabled-pm-cell {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+
+/* Print support for tabs and special photography */
+@media print {
+    .calendar-tabs {
+        display: none !important;
+    }
+}
+
+/* Doctor modal horizontal 2-column layout */
+#doctor-modal .modal-content {
+    max-width: 920px;
+    width: 95vw;
+    padding: 1rem 1.25rem 0.75rem 1.25rem; /* 進一步收縮 padding */
+}
+
+/* 針對 doctor-modal 內部的緊湊版面微調 */
+#doctor-modal .modal-header {
+    margin-bottom: 0.5rem;
+}
+
+#doctor-modal .modal-footer {
+    margin-top: 0.5rem;
+}
+
+#doctor-modal .modal-form-cols {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 1.25rem;
+}
+
+#doctor-modal .modal-form-col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem; /* 從 0.6rem 縮小 */
+}
+
+#doctor-modal .form-group {
+    margin-bottom: 0.4rem; /* 從 0.6rem 縮小 */
+}
+
+#doctor-modal .form-group label {
+    margin-bottom: 0.2rem; /* 從 0.25rem 縮小 */
+    font-size: 0.78rem;
+}
+
+#doctor-modal .form-group input,
+#doctor-modal .form-group select {
+    padding: 0.35rem 0.5rem; /* 從 0.4rem 0.6rem 縮小 */
+    font-size: 0.82rem;
+    border-radius: var(--border-radius-sm);
+}
+
+#doctor-modal .form-row {
+    gap: 0.6rem; /* 從 0.75rem 縮小 */
+}
+
+#doctor-modal .form-row-three {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr 1.8fr;
+    gap: 0.6rem;
+}
+
+#doctor-modal .weekday-checkbox-grid {
+    grid-template-columns: repeat(7, 1fr); /* 7 天排成單行 */
+    gap: 3px;
+}
+
+#doctor-modal .weekday-checkbox-label {
+    padding: 4px 2px;
+    font-size: 0.72rem;
+    justify-content: center;
+    gap: 2px;
+}
+
+#doctor-modal .spec-off-table th {
+    padding: 5px 6px; /* 進一步縮減 table padding */
+    font-size: 0.78rem;
+}
+
+#doctor-modal .spec-off-table td {
+    padding: 4px 6px; /* 進一步縮減 table padding */
+    font-size: 0.78rem;
+}
+
+#doctor-modal .spec-off-table td:first-child,
+#doctor-modal .spec-off-table th:first-child {
+    padding-left: 10px;
+}
+
+#doctor-modal .spec-off-table input[type="checkbox"] {
+    width: 14px; /* 15px 縮小為 14px */
+    height: 14px;
+    border-radius: 3px;
+}
+
+#doctor-modal .spec-off-table input[type="checkbox"]:checked::after {
+    font-size: 10px;
+}
+
+@media (max-width: 768px) {
+    #doctor-modal .modal-content {
+        max-width: 480px;
+        width: 90vw;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-form-cols {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+    .modal-form-col:last-child {
+        border-left: none !important;
+        padding-left: 0 !important;
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding-top: 1.25rem;
+    }
+}
+
+/* Calendar Full Height View (No scroll constraint, expand all days) */
+.scheduler-card.full-view {
+    flex: none;
+    height: auto;
+    overflow: visible;
+}
+
+.scheduler-card.full-view .calendar-viewport {
+    flex: none;
+    overflow: visible;
+}
+
+.scheduler-card.full-view .calendar-container {
+    height: auto;
+}

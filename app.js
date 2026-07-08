@@ -35,8 +35,8 @@ const SHIFT_TYPES = {
 // Initial/Default Doctors List (No PGY, with weekly off-duty weekday settings and multiple tiers)
 const DEFAULT_RESIDENTS = [
     { id: '1', name: '翔', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '2', name: '佩', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '3', name: '蓁', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '2', name: '蓁', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '3', name: '佩', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
     { id: '4', name: '江', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
     { id: '5', name: '評', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
     { id: '6', name: '佳', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
@@ -143,6 +143,13 @@ function loadData() {
             if (state.fullView === undefined) {
                 state.fullView = localStorage.getItem('calendar_full_view') === 'true';
             }
+            // Ensure lockedShifts is initialized
+            if (!state.lockedShifts || typeof state.lockedShifts !== 'object') {
+                state.lockedShifts = {};
+            }
+            if (!state.lockedShifts[state.currentMonth]) {
+                state.lockedShifts[state.currentMonth] = {};
+            }
             // Strip out D and N assignments from schedule across all months
             Object.keys(state.schedule).forEach(month => {
                 if (state.schedule[month] && typeof state.schedule[month] === 'object') {
@@ -177,6 +184,8 @@ function loadDefaults() {
     state.saturdayAssignments[state.currentMonth] = {};
     state.lastMonthLastDayDuty = {};
     state.lastMonthLastDayDuty[state.currentMonth] = { C1: "", C2: "" };
+    state.lockedShifts = {};
+    state.lockedShifts[state.currentMonth] = {};
     state.activeTab = 'duty';
     saveData();
 }
@@ -516,11 +525,80 @@ function initEventListeners() {
             }
         });
     }
+    // Export JSON
+    const exportJsonBtn = document.getElementById('btn-export-json');
+    if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('click', () => {
+            const dataToExport = {
+                month: state.currentMonth,
+                residents: state.residents,
+                schedule: state.schedule[state.currentMonth] || {},
+                specSchedule: state.specSchedule[state.currentMonth] || {},
+                saturdayAssignments: state.saturdayAssignments[state.currentMonth] || {},
+                lockedShifts: state.lockedShifts[state.currentMonth] || {}
+            };
+            const jsonString = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `排班設定與資料_${state.currentMonth}.json`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        });
+    }
 
-    // Export CSV
-    const exportBtn = document.getElementById('btn-export');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', exportToCSV);
+    // Import JSON
+    const importJsonBtn = document.getElementById('btn-import-json');
+    const importJsonFileInput = document.getElementById('import-json-file');
+    if (importJsonBtn && importJsonFileInput) {
+        importJsonBtn.addEventListener('click', () => {
+            importJsonFileInput.click();
+        });
+
+        importJsonFileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const importedData = JSON.parse(event.target.result);
+                    if (!importedData.residents || !Array.isArray(importedData.residents)) {
+                        alert('無效的 JSON 檔案，必需包含住院醫師名單資料！');
+                        return;
+                    }
+
+                    // Check month mismatch
+                    if (importedData.month !== state.currentMonth) {
+                        const confirmMsg = `匯入資料的月份為 「${importedData.month || '未指定'}」，但您目前正在編輯 「${state.currentMonth}」。\n\n是否確定要將此資料匯入並覆蓋 「${state.currentMonth}」 的排班、人員條件與鎖定設定？`;
+                        if (!confirm(confirmMsg)) {
+                            importJsonFileInput.value = ''; // clear input
+                            return;
+                        }
+                    }
+
+                    // Apply imported data
+                    state.residents = importedData.residents;
+                    state.schedule[state.currentMonth] = importedData.schedule || {};
+                    state.specSchedule[state.currentMonth] = importedData.specSchedule || {};
+                    state.saturdayAssignments[state.currentMonth] = importedData.saturdayAssignments || {};
+                    state.lockedShifts[state.currentMonth] = importedData.lockedShifts || {};
+
+                    saveData();
+                    renderAll();
+                    alert('當月排班資料與人員設定匯入成功！');
+                } catch (error) {
+                    console.error('Import JSON Error:', error);
+                    alert('匯入失敗：檔案格式錯誤或不完整。');
+                }
+                importJsonFileInput.value = ''; // clear input
+            };
+            reader.readAsText(file);
+        });
     }
 
     // Print
@@ -599,6 +677,16 @@ function initEventListeners() {
         // Apply initial visual state based on storage/state
         updateFullViewUI();
     }
+
+    // Modal lock buttons toggle listener
+    const lockButtons = document.querySelectorAll('#daily-editor-modal .btn-lock');
+    lockButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const currentlyLocked = btn.dataset.locked === 'true';
+            btn.dataset.locked = currentlyLocked ? 'false' : 'true';
+            updateModalLockVisual(btn);
+        });
+    });
 }
 
 // Edit doctor info
@@ -854,6 +942,8 @@ function renderGrid() {
     const gridContainer = document.getElementById('grid-container');
     if (!gridContainer) return;
 
+    const goldLockIcon = `<svg style="width:10px; height:10px; fill:#eab308; margin-left:3px; display:inline-block; vertical-align:middle;" viewBox="0 0 24 24" title="手動鎖定，自動排班不會變動"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`;
+
     const daysCount = getDaysInMonth();
     const [year, month] = state.currentMonth.split('-').map(Number);
     const firstDayIndexRaw = new Date(year, month - 1, 1).getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
@@ -944,10 +1034,11 @@ function renderGrid() {
             } else {
                 dayStaff.C1.forEach(doc => {
                     const color = getDoctorColorStyles(doc.id);
+                    const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_C1`];
                     c1Html += `
                         <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-c1" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C1</span>
-                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
+                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 });
@@ -973,10 +1064,11 @@ function renderGrid() {
             } else {
                 dayStaff.C2.forEach(doc => {
                     const color = getDoctorColorStyles(doc.id);
+                    const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_C2`];
                     c2Html += `
                         <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-c2" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C2</span>
-                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
+                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 });
@@ -1001,11 +1093,12 @@ function renderGrid() {
                 ['angio', 'spec', 'inj'].forEach(pos => {
                     const assignedDocId = dayAssign[pos];
                     const doc = state.residents.find(r => r.id === assignedDocId);
+                    const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_${pos}`];
                     if (doc) {
                         tagsHtml += `
-                            <div class="sat-position-tag ${pos}" title="${posFullLabels[pos]}: ${doc.name}" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
+                            <div class="sat-position-tag ${pos}" title="${posFullLabels[pos]}: ${doc.name}${isLocked ? ' (已鎖定)' : ''}" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
                                 <span class="sat-position-label" style="padding: 1px 3px; font-size: 0.62rem; margin-right: 3px; border-radius: 2px; line-height: 1;">${posLabels[pos]}</span>
-                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${doc.name}</span>
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
                             </div>
                         `;
                     } else {
@@ -1040,12 +1133,13 @@ function renderGrid() {
                 const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
                 const satSpecId = dayAssign.spec;
                 const doc = state.residents.find(r => r.id === satSpecId);
+                const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_spec`];
                 if (doc) {
                     const color = getDoctorColorStyles(doc.id);
                     amHtml = `
                         <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
-                            <span class="slot-staff" title="${doc.name} (週六特攝)" style="color: ${color.text}; font-weight: 600;">${doc.name}</span>
+                            <span class="slot-staff" title="${doc.name} (週六特攝)${isLocked ? ' (已鎖定)' : ''}" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1067,10 +1161,11 @@ function renderGrid() {
 
                 if (amDoc) {
                     const color = getDoctorColorStyles(amDoc.id);
+                    const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_AM`];
                     amHtml = `
                         <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
-                            <span class="slot-staff" title="${amDoc.name}" style="color: ${color.text}; font-weight: 600;">${amDoc.name}</span>
+                            <span class="slot-staff" title="${amDoc.name}" style="color: ${color.text}; font-weight: 600;">${amDoc.name}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1084,10 +1179,11 @@ function renderGrid() {
 
                 if (pmDoc) {
                     const color = getDoctorColorStyles(pmDoc.id);
+                    const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_PM`];
                     pmHtml = `
                         <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-pm" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">PM</span>
-                            <span class="slot-staff" title="${pmDoc.name}" style="color: ${color.text}; font-weight: 600;">${pmDoc.name}</span>
+                            <span class="slot-staff" title="${pmDoc.name}" style="color: ${color.text}; font-weight: 600;">${pmDoc.name}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1199,33 +1295,51 @@ function openDailyEditor(day) {
             return;
         }
 
-        // Generate checkboxes list
-        state.residents.forEach(doc => {
+        // Define checkbox factory
+        const createCheckbox = (doc, shiftCode, violations) => {
             const docCurrentShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${day}`] || 'O';
-
-            const createCheckbox = (shiftCode) => {
-                const isChecked = docCurrentShift === shiftCode;
-                const wrapper = document.createElement('label');
-                wrapper.className = `doctor-checkbox-label ${isChecked ? 'is-checked' : ''}`;
-                wrapper.innerHTML = `
-                    <input type="checkbox" data-doc-id="${doc.id}" data-shift="${shiftCode}" ${isChecked ? 'checked' : ''}>
-                    <span>${doc.name} <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level.split(' ')[0]}</span></span>
-                `;
-                
-                const checkbox = wrapper.querySelector('input');
-                checkbox.addEventListener('change', handleDailyCheckboxChange);
-                return wrapper;
-            };
-
-            // C1 (First-line Duty) only shows first-line doctors
-            if (doc.tiers && doc.tiers.includes('first')) {
-                c1Container.appendChild(createCheckbox('C1'));
+            const isChecked = docCurrentShift === shiftCode;
+            const hasViolations = violations && violations.length > 0;
+            const wrapper = document.createElement('label');
+            wrapper.className = `doctor-checkbox-label ${isChecked ? 'is-checked' : ''} ${hasViolations ? 'has-violations' : ''}`;
+            if (hasViolations) {
+                wrapper.title = "⚠️ 違反規則：\n" + violations.map(v => "• " + v).join("\n");
             }
+            
+            wrapper.innerHTML = `
+                <input type="checkbox" data-doc-id="${doc.id}" data-shift="${shiftCode}" ${isChecked ? 'checked' : ''}>
+                <span>${doc.name}${hasViolations ? ' ⚠️' : ''} <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level.split(' ')[0]}</span></span>
+            `;
+            
+            const checkbox = wrapper.querySelector('input');
+            checkbox.addEventListener('change', handleDailyCheckboxChange);
+            return wrapper;
+        };
 
-            // C2 (Second-line Duty) only shows second-line doctors
-            if (doc.tiers && doc.tiers.includes('second')) {
-                c2Container.appendChild(createCheckbox('C2'));
-            }
+        // Render sorted C1 Checkboxes (doctors with 0 violations are listed first)
+        const firstLineDocs = state.residents
+            .filter(doc => doc.tiers && doc.tiers.includes('first'))
+            .map(doc => ({
+                doc,
+                violations: checkAssignmentViolation(doc.id, Number(day), 'C1')
+            }))
+            .sort((a, b) => a.violations.length - b.violations.length);
+
+        firstLineDocs.forEach(item => {
+            c1Container.appendChild(createCheckbox(item.doc, 'C1', item.violations));
+        });
+
+        // Render sorted C2 Checkboxes (doctors with 0 violations are listed first)
+        const secondLineDocs = state.residents
+            .filter(doc => doc.tiers && doc.tiers.includes('second'))
+            .map(doc => ({
+                doc,
+                violations: checkAssignmentViolation(doc.id, Number(day), 'C2')
+            }))
+            .sort((a, b) => a.violations.length - b.violations.length);
+
+        secondLineDocs.forEach(item => {
+            c2Container.appendChild(createCheckbox(item.doc, 'C2', item.violations));
         });
 
         // Saturday Positions block
@@ -1265,18 +1379,54 @@ function openDailyEditor(day) {
                 const getOptionsHtml = (posCode) => {
                     let optHtml = '<option value="">-- 未指派 --</option>';
                     const dutyDocs = [...satDocs, ...friDocs];
-                    dutyDocs.forEach(item => {
+                    const addedDocs = new Set();
+
+                    // Pre-calculate violations and sort recommended duty docs (0 violations first)
+                    const sortedDutyDocs = dutyDocs
+                        .map(item => ({
+                            ...item,
+                            violations: checkAssignmentViolation(item.doc.id, Number(day), posCode)
+                        }))
+                        .sort((a, b) => a.violations.length - b.violations.length);
+
+                    sortedDutyDocs.forEach(item => {
                         const doc = item.doc;
+                        if (addedDocs.has(doc.id)) return;
+                        addedDocs.add(doc.id);
+
                         const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
                         const qualText = hasQual ? '' : ' (無此位置資格)';
-                        optHtml += `<option value="${doc.id}">★ ${doc.name} (${item.status})${qualText}</option>`;
+                        
+                        const warningText = item.violations.length > 0 ? ` (⚠️ ${item.violations[0]})` : '';
+                        const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
+                        const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
+
+                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>★ ${doc.name} (${item.status})${qualText}${warningText}</option>`;
                     });
+                    
                     optHtml += '<option disabled>──────────</option>';
-                    state.residents.forEach(doc => {
-                        if (dutyDocs.some(item => item.doc.id === doc.id)) return;
+                    
+                    // Filter, calculate violations and sort the remaining doctors (0 violations first)
+                    const sortedOtherDocs = state.residents
+                        .filter(doc => !addedDocs.has(doc.id))
+                        .map(doc => ({
+                            doc,
+                            violations: checkAssignmentViolation(doc.id, Number(day), posCode)
+                        }))
+                        .sort((a, b) => a.violations.length - b.violations.length);
+
+                    sortedOtherDocs.forEach(item => {
+                        const doc = item.doc;
+                        addedDocs.add(doc.id);
+
                         const hasQual = doc.satPositions ? doc.satPositions.includes(posCode) : true;
                         const qualText = hasQual ? '' : ' (無此位置資格)';
-                        optHtml += `<option value="${doc.id}">${doc.name}${qualText}</option>`;
+                        
+                        const warningText = item.violations.length > 0 ? ` (⚠️ ${item.violations[0]})` : '';
+                        const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
+                        const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
+
+                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${doc.name}${qualText}${warningText}</option>`;
                     });
                     return optHtml;
                 };
@@ -1309,10 +1459,23 @@ function openDailyEditor(day) {
         // Filter doctors with spec qualification
         const specQualifiedDocs = state.residents.filter(r => r.satPositions && r.satPositions.includes('spec'));
 
-        const getSpecOptionsHtml = () => {
+        const getSpecOptionsHtml = (posCode) => {
             let optHtml = '<option value="">-- 未指派 --</option>';
-            specQualifiedDocs.forEach(doc => {
-                optHtml += `<option value="${doc.id}">${doc.name} (${doc.level.split(' ')[0]})</option>`;
+            
+            // Map violations and sort spec qualified doctors (0 violations first)
+            const sortedSpecDocs = specQualifiedDocs
+                .map(doc => ({
+                    doc,
+                    violations: checkAssignmentViolation(doc.id, Number(day), posCode)
+                }))
+                .sort((a, b) => a.violations.length - b.violations.length);
+
+            sortedSpecDocs.forEach(item => {
+                const doc = item.doc;
+                const warningText = item.violations.length > 0 ? ` (⚠️ ${item.violations[0]})` : '';
+                const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
+                const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
+                optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${doc.name} (${doc.level.split(' ')[0]})${warningText}</option>`;
             });
             return optHtml;
         };
@@ -1341,20 +1504,27 @@ function openDailyEditor(day) {
             if (pmSection) pmSection.style.display = 'block';
             if (selectAm) {
                 selectAm.disabled = false;
-                selectAm.innerHTML = getSpecOptionsHtml();
+                selectAm.innerHTML = getSpecOptionsHtml('AM');
                 const currentAm = (state.specSchedule[state.currentMonth] || {})[`${day}_AM`] || '';
                 selectAm.value = currentAm;
             }
             if (selectPm) {
                 selectPm.disabled = false;
-                selectPm.innerHTML = getSpecOptionsHtml();
+                selectPm.innerHTML = getSpecOptionsHtml('PM');
                 const currentPm = (state.specSchedule[state.currentMonth] || {})[`${day}_PM`] || '';
                 selectPm.value = currentPm;
             }
         }
     }
 
+    initModalLocks(day);
+
     const modal = document.getElementById('daily-editor-modal');
+    if (state.activeTab === 'duty' && !isLastMonth && wd && wd.num === 6) {
+        modal.classList.add('is-sat-layout');
+    } else {
+        modal.classList.remove('is-sat-layout');
+    }
     modal.classList.add('active');
 }
 
@@ -1362,8 +1532,19 @@ function openDailyEditor(day) {
 function handleDailyCheckboxChange(e) {
     const checkbox = e.target;
     const docId = checkbox.dataset.docId;
+    const shift = checkbox.dataset.shift;
 
     if (checkbox.checked) {
+        // 1. Mutually exclusive across doctors within the same shift (C1 or C2)
+        const sameShiftCheckboxes = document.querySelectorAll(`#daily-editor-modal input[data-shift="${shift}"]`);
+        sameShiftCheckboxes.forEach(cb => {
+            if (cb !== checkbox) {
+                cb.checked = false;
+                cb.closest('.doctor-checkbox-label').classList.remove('is-checked');
+            }
+        });
+
+        // 2. Mutually exclusive for the same doctor across different shifts
         const allDocCheckboxes = document.querySelectorAll(`#daily-editor-modal input[data-doc-id="${docId}"]`);
         allDocCheckboxes.forEach(cb => {
             if (cb !== checkbox) {
@@ -1371,6 +1552,7 @@ function handleDailyCheckboxChange(e) {
                 cb.closest('.doctor-checkbox-label').classList.remove('is-checked');
             }
         });
+
         checkbox.closest('.doctor-checkbox-label').classList.add('is-checked');
     } else {
         checkbox.closest('.doctor-checkbox-label').classList.remove('is-checked');
@@ -1454,6 +1636,23 @@ function saveDailyShifts() {
             };
         }
     }
+
+    // Save lock states
+    if (!state.lockedShifts[state.currentMonth]) {
+        state.lockedShifts[state.currentMonth] = {};
+    }
+    const lockButtons = document.querySelectorAll('#daily-editor-modal .btn-lock');
+    lockButtons.forEach(btn => {
+        const key = btn.dataset.lockKey;
+        if (key && btn.style.display !== 'none') {
+            const isLocked = btn.dataset.locked === 'true';
+            if (isLocked) {
+                state.lockedShifts[state.currentMonth][key] = true;
+            } else {
+                delete state.lockedShifts[state.currentMonth][key];
+            }
+        }
+    });
 
     saveData();
     modal.classList.remove('active');
@@ -2195,61 +2394,62 @@ function solveSpecSchedule() {
 
             // Monday to Friday: AM and PM
             // 1. Assign AM
-            let amCandidates = specQualifiedDocs.filter(doc => {
-                // Vacation check
-                if (doc.offDays && doc.offDays.includes(d)) return false;
-                // Weekday off AM check
-                if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(wd.num)) return false;
-                return true;
-            });
+            const lockedAmId = (state.lockedShifts[state.currentMonth] || {})[`${d}_AM`] 
+                ? (state.specSchedule[state.currentMonth] || {})[`${d}_AM`] 
+                : null;
+            let amDoc = null;
 
-            if (amCandidates.length === 0) {
-                success = false;
-                break;
+            if (lockedAmId) {
+                tempSpecSchedule[`${d}_AM`] = lockedAmId;
+                if (docWorkloads[lockedAmId] !== undefined) docWorkloads[lockedAmId]++;
+                amDoc = state.residents.find(r => r.id === lockedAmId);
+            } else {
+                let amCandidates = specQualifiedDocs.filter(doc => {
+                    // Vacation check
+                    if (doc.offDays && doc.offDays.includes(d)) return false;
+                    // Weekday off AM check
+                    if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(wd.num)) return false;
+                    return true;
+                });
+
+                if (amCandidates.length === 0) {
+                    success = false;
+                    break;
+                }
+
+                // Sort AM candidates by workload + slight randomness
+                amCandidates.sort((a, b) => {
+                    let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
+                    let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
+                    return scoreA - scoreB;
+                });
+
+                amDoc = amCandidates[0];
+                tempSpecSchedule[`${d}_AM`] = amDoc.id;
+                docWorkloads[amDoc.id]++;
             }
 
-            // Sort AM candidates by workload + slight randomness
-            amCandidates.sort((a, b) => {
-                let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
-                let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
-                return scoreA - scoreB;
-            });
-
-            const amDoc = amCandidates[0];
-            tempSpecSchedule[`${d}_AM`] = amDoc.id;
-            docWorkloads[amDoc.id]++;
-
             // 2. Assign PM
-            let pmCandidates = specQualifiedDocs.filter(doc => {
-                // Cannot be the same doctor as AM on the same day if possible
-                if (doc.id === amDoc.id && amCandidates.length > 1) return false;
-                // Vacation check
-                if (doc.offDays && doc.offDays.includes(d)) return false;
-                // Weekday off PM check
-                if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) return false;
-                
-                // PM restriction: previous day duty check
-                const isDuty = (s) => s === 'C1' || s === 'C2';
-                if (d === 1) {
-                    // Cross-month check
-                    const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
-                    const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
-                    if (doc.id === prevC1 || doc.id === prevC2) return false;
-                } else {
-                    const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d - 1}`] || 'O';
-                    if (isDuty(prevShift)) return false;
-                }
-                return true;
-            });
+            const lockedPmId = (state.lockedShifts[state.currentMonth] || {})[`${d}_PM`] 
+                ? (state.specSchedule[state.currentMonth] || {})[`${d}_PM`] 
+                : null;
 
-            // If pmCandidates is empty, fallback to allow same-day double assignment if needed
-            if (pmCandidates.length === 0) {
-                pmCandidates = specQualifiedDocs.filter(doc => {
+            if (lockedPmId) {
+                tempSpecSchedule[`${d}_PM`] = lockedPmId;
+                if (docWorkloads[lockedPmId] !== undefined) docWorkloads[lockedPmId]++;
+            } else {
+                let pmCandidates = specQualifiedDocs.filter(doc => {
+                    // Cannot be the same doctor as AM on the same day if possible
+                    if (amDoc && doc.id === amDoc.id && specQualifiedDocs.length > 1) return false;
+                    // Vacation check
                     if (doc.offDays && doc.offDays.includes(d)) return false;
+                    // Weekday off PM check
                     if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) return false;
                     
+                    // PM restriction: previous day duty check
                     const isDuty = (s) => s === 'C1' || s === 'C2';
                     if (d === 1) {
+                        // Cross-month check
                         const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
                         const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
                         if (doc.id === prevC1 || doc.id === prevC2) return false;
@@ -2259,23 +2459,42 @@ function solveSpecSchedule() {
                     }
                     return true;
                 });
+
+                // If pmCandidates is empty, fallback to allow same-day double assignment if needed
+                if (pmCandidates.length === 0) {
+                    pmCandidates = specQualifiedDocs.filter(doc => {
+                        if (doc.offDays && doc.offDays.includes(d)) return false;
+                        if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) return false;
+                        
+                        const isDuty = (s) => s === 'C1' || s === 'C2';
+                        if (d === 1) {
+                            const prevC1 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C1;
+                            const prevC2 = (state.lastMonthLastDayDuty[state.currentMonth] || {}).C2;
+                            if (doc.id === prevC1 || doc.id === prevC2) return false;
+                        } else {
+                            const prevShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d - 1}`] || 'O';
+                            if (isDuty(prevShift)) return false;
+                        }
+                        return true;
+                    });
+                }
+
+                if (pmCandidates.length === 0) {
+                    success = false;
+                    break;
+                }
+
+                // Sort PM candidates by workload + slight randomness
+                pmCandidates.sort((a, b) => {
+                    let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
+                    let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
+                    return scoreA - scoreB;
+                });
+
+                const pmDoc = pmCandidates[0];
+                tempSpecSchedule[`${d}_PM`] = pmDoc.id;
+                docWorkloads[pmDoc.id]++;
             }
-
-            if (pmCandidates.length === 0) {
-                success = false;
-                break;
-            }
-
-            // Sort PM candidates by workload + slight randomness
-            pmCandidates.sort((a, b) => {
-                let scoreA = docWorkloads[a.id] * 10 + Math.random() * 2;
-                let scoreB = docWorkloads[b.id] * 10 + Math.random() * 2;
-                return scoreA - scoreB;
-            });
-
-            const pmDoc = pmCandidates[0];
-            tempSpecSchedule[`${d}_PM`] = pmDoc.id;
-            docWorkloads[pmDoc.id]++;
         }
 
         let currentViolations = countTempSpecViolations(tempSpecSchedule, daysCount);
@@ -2371,6 +2590,16 @@ function countTempSpecViolations(tempSpecSchedule, daysCount) {
 
 // Helper to find a valid assignment for a given Saturday day in a temporary schedule
 function findSaturdayAssignment(day, tempSchedule) {
+    const origAssign = (state.saturdayAssignments[state.currentMonth] || {})[day] || {};
+    const lockedAngioId = (state.lockedShifts[state.currentMonth] || {})[`${day}_angio`] ? origAssign.angio : null;
+    const lockedSpecId = (state.lockedShifts[state.currentMonth] || {})[`${day}_spec`] ? origAssign.spec : null;
+    const lockedInjId = (state.lockedShifts[state.currentMonth] || {})[`${day}_inj`] ? origAssign.inj : null;
+
+    // If all three Saturday roles are manually locked, return directly
+    if (lockedAngioId && lockedSpecId && lockedInjId) {
+        return { angio: lockedAngioId, spec: lockedSpecId, inj: lockedInjId };
+    }
+
     const satDoctors = [];
     state.residents.forEach(r => {
         const shift = tempSchedule[`${r.id}_${day}`] || 'O';
@@ -2395,54 +2624,93 @@ function findSaturdayAssignment(day, tempSchedule) {
         });
     }
 
-    if (satDoctors.length < 2) return null;
     const friCandidates = friDoctors.length > 0 ? friDoctors : state.residents;
 
-    for (let i = 0; i < satDoctors.length; i++) {
-        for (let j = 0; j < satDoctors.length; j++) {
+    // Build a candidate pool ensuring we include satDoctors, locked doctors, and friCandidates
+    const poolSet = new Set();
+    satDoctors.forEach(doc => poolSet.add(doc));
+
+    const lockedDocs = [];
+    [lockedAngioId, lockedSpecId, lockedInjId].forEach(id => {
+        if (id) {
+            const doc = state.residents.find(r => r.id === id);
+            if (doc) {
+                lockedDocs.push(doc);
+                poolSet.add(doc);
+            }
+        }
+    });
+
+    // If pool has less than 3 doctors, fill with Friday candidates
+    let friIdx = 0;
+    while (poolSet.size < 3 && friIdx < friCandidates.length) {
+        poolSet.add(friCandidates[friIdx]);
+        friIdx++;
+    }
+
+    // If still less than 3, fill with all available doctors
+    let resIdx = 0;
+    while (poolSet.size < 3 && resIdx < state.residents.length) {
+        poolSet.add(state.residents[resIdx]);
+        resIdx++;
+    }
+
+    const pool = Array.from(poolSet);
+    if (pool.length < 3) return null;
+
+    const validAssignments = [];
+
+    // Permute 3 distinct doctors from the pool
+    for (let i = 0; i < pool.length; i++) {
+        for (let j = 0; j < pool.length; j++) {
             if (i === j) continue;
-            const docSat1 = satDoctors[i];
-            const docSat2 = satDoctors[j];
+            for (let k = 0; k < pool.length; k++) {
+                if (i === k || j === k) continue;
 
-            for (let k = 0; k < friCandidates.length; k++) {
-                const docFri = friCandidates[k];
-                if (docFri.id === docSat1.id || docFri.id === docSat2.id) continue;
+                const assign = {
+                    angio: pool[i],
+                    spec: pool[j],
+                    inj: pool[k]
+                };
 
-                const candidates = [docSat1, docSat2, docFri];
-                const permutations = [
-                    [0, 1, 2], [0, 2, 1],
-                    [1, 0, 2], [1, 2, 0],
-                    [2, 0, 1], [2, 1, 0]
-                ];
+                // 1. Qualification check
+                const qAngio = assign.angio.satPositions ? assign.angio.satPositions.includes('angio') : true;
+                const qSpec = assign.spec.satPositions ? assign.spec.satPositions.includes('spec') : true;
+                const qInj = assign.inj.satPositions ? assign.inj.satPositions.includes('inj') : true;
 
-                // Shuffle permutations to give equal opportunities for all role assignments
-                for (let idx = permutations.length - 1; idx > 0; idx--) {
-                    const rIdx = Math.floor(Math.random() * (idx + 1));
-                    [permutations[idx], permutations[rIdx]] = [permutations[rIdx], permutations[idx]];
-                }
+                if (!qAngio || !qSpec || !qInj) continue;
 
-                for (let p of permutations) {
-                    const assign = {
-                        angio: candidates[p[0]],
-                        spec: candidates[p[1]],
-                        inj: candidates[p[2]]
-                    };
+                // 2. Lock constraint check
+                if (lockedAngioId && assign.angio.id !== lockedAngioId) continue;
+                if (lockedSpecId && assign.spec.id !== lockedSpecId) continue;
+                if (lockedInjId && assign.inj.id !== lockedInjId) continue;
 
-                    const qAngio = assign.angio.satPositions ? assign.angio.satPositions.includes('angio') : true;
-                    const qSpec = assign.spec.satPositions ? assign.spec.satPositions.includes('spec') : true;
-                    const qInj = assign.inj.satPositions ? assign.inj.satPositions.includes('inj') : true;
+                // 3. Priority scoring based on original scheduling heuristics
+                let score = 0;
+                if (satDoctors.some(d => d.id === assign.angio.id)) score += 10;
+                if (satDoctors.some(d => d.id === assign.spec.id)) score += 10;
+                if (satDoctors.some(d => d.id === assign.inj.id)) score += 10;
 
-                    if (qAngio && qSpec && qInj) {
-                        return {
-                            angio: assign.angio.id,
-                            spec: assign.spec.id,
-                            inj: assign.inj.id
-                        };
-                    }
-                }
+                if (friCandidates.some(d => d.id === assign.angio.id)) score += 2;
+                if (friCandidates.some(d => d.id === assign.spec.id)) score += 2;
+                if (friCandidates.some(d => d.id === assign.inj.id)) score += 2;
+
+                validAssignments.push({
+                    assign: {
+                        angio: assign.angio.id,
+                        spec: assign.spec.id,
+                        inj: assign.inj.id
+                    },
+                    score: score + Math.random() * 2 // slight randomness to break ties
+                });
             }
         }
     }
+
+    if (validAssignments.length === 0) return null;
+
+    validAssignments.sort((a, b) => b.score - a.score);
+    return validAssignments[0].assign;
 
     return null;
 }
@@ -2474,15 +2742,46 @@ function solveSchedule() {
             const wd = getWeekday(d);
             const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
 
-            // Prioritize Duty C2, then C1
-            let neededShifts = [];
-            for (let i = 0; i < req.C2; i++) neededShifts.push('C2');
-            for (let i = 0; i < req.C1; i++) neededShifts.push('C1');
-
             // Default to Off
             state.residents.forEach(doc => {
                 tempSchedule[`${doc.id}_${d}`] = 'O';
             });
+
+            // Find locked C1 & C2 doctor assignments for today
+            const lockedC1Docs = state.residents.filter(doc => {
+                const origShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`];
+                return origShift === 'C1' && (state.lockedShifts[state.currentMonth] || {})[`${d}_C1`];
+            });
+
+            const lockedC2Docs = state.residents.filter(doc => {
+                const origShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`];
+                return origShift === 'C2' && (state.lockedShifts[state.currentMonth] || {})[`${d}_C2`];
+            });
+
+            // Pre-assign locked duties and increment workloads
+            lockedC1Docs.forEach(doc => {
+                tempSchedule[`${doc.id}_${d}`] = 'C1';
+                docStats[doc.id].totalShifts++;
+                if (wd.isWeekend) {
+                    docStats[doc.id].weekendDuties++;
+                }
+            });
+
+            lockedC2Docs.forEach(doc => {
+                tempSchedule[`${doc.id}_${d}`] = 'C2';
+                docStats[doc.id].totalShifts++;
+                if (wd.isWeekend) {
+                    docStats[doc.id].weekendDuties++;
+                }
+            });
+
+            // Prioritize remaining slots (Duty C2, then C1)
+            let remainingC2 = Math.max(0, req.C2 - lockedC2Docs.length);
+            let remainingC1 = Math.max(0, req.C1 - lockedC1Docs.length);
+
+            let neededShifts = [];
+            for (let i = 0; i < remainingC2; i++) neededShifts.push('C2');
+            for (let i = 0; i < remainingC1; i++) neededShifts.push('C1');
 
             for (let sIndex = 0; sIndex < neededShifts.length; sIndex++) {
                 const shiftType = neededShifts[sIndex];
@@ -2708,152 +3007,6 @@ function countTempScheduleViolations(tempSchedule, docStats, daysCount) {
     return violations;
 }
 
-// Export schedule to CSV
-function exportToCSV() {
-    if (state.residents.length === 0) return;
-
-    const daysCount = getDaysInMonth();
-    let csvRows = [];
-    
-    if (state.activeTab === 'spec') {
-        let headers = ['醫師姓名', '職級', '特攝 AM 不值星期', '特攝 PM 不值星期'];
-        for (let d = 1; d <= daysCount; d++) {
-            headers.push(`${d}日(${getWeekday(d).name})`);
-        }
-        headers.push('特攝總班數', '上午班(AM)', '下午班(PM)');
-        csvRows.push(headers.join(','));
-
-        state.residents.forEach(doc => {
-            const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
-            const amOffNames = (doc.specOffWeekdays?.AM || []).map(w => weekdaysNames[w]).join(';');
-            const pmOffNames = (doc.specOffWeekdays?.PM || []).map(w => weekdaysNames[w]).join(';');
-            
-            let row = [doc.name, doc.level, amOffNames, pmOffNames];
-            let amCount = 0, pmCount = 0;
-
-            for (let d = 1; d <= daysCount; d++) {
-                const wd = getWeekday(d);
-                let shiftText = 'O';
-
-                if (wd.num === 0) {
-                    shiftText = 'O';
-                } else if (wd.num === 6) {
-                    const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
-                    if (dayAssign.spec === doc.id) {
-                        shiftText = 'AM';
-                        amCount++;
-                    }
-                } else {
-                    const amDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_AM`];
-                    const pmDocId = (state.specSchedule[state.currentMonth] || {})[`${d}_PM`];
-                    
-                    const isAm = amDocId === doc.id;
-                    const isPm = pmDocId === doc.id;
-
-                    if (isAm && isPm) {
-                        shiftText = 'AM+PM';
-                        amCount++;
-                        pmCount++;
-                    } else if (isAm) {
-                        shiftText = 'AM';
-                        amCount++;
-                    } else if (isPm) {
-                        shiftText = 'PM';
-                        pmCount++;
-                    }
-                }
-                row.push(shiftText);
-            }
-
-            row.push(amCount + pmCount);
-            row.push(amCount);
-            row.push(pmCount);
-
-            csvRows.push(row.join(','));
-        });
-
-        const csvContent = '\uFEFF' + csvRows.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        
-        link.setAttribute('href', url);
-        link.setAttribute('download', `特殊攝影排班表_${state.currentMonth}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } else {
-        let headers = ['醫師姓名', '職級', '值班類別', '不值班星期', '值班上限'];
-        for (let d = 1; d <= daysCount; d++) {
-            headers.push(`${d}日(${getWeekday(d).name})`);
-        }
-        headers.push('總值班數', '一線值班(C1)', '二線值班(C2)');
-        csvRows.push(headers.join(','));
-
-        state.residents.forEach(doc => {
-            const weekdaysNames = ['日', '一', '二', '三', '四', '五', '六'];
-            const offWeekdaysNameList = doc.offWeekdays.map(w => weekdaysNames[w]).join(';');
-            const tiersList = [];
-            if (doc.tiers) {
-                if (doc.tiers.includes('first')) tiersList.push('一線');
-                if (doc.tiers.includes('second')) tiersList.push('二線');
-            }
-            const tierName = tiersList.join('+') + '人員';
-            
-            let row = [doc.name, doc.level, tierName, offWeekdaysNameList, doc.maxShifts];
-            let c1Count = 0, c2Count = 0;
-
-            for (let d = 1; d <= daysCount; d++) {
-                let shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-                const wd = getWeekday(d);
-                
-                if (wd.num === 6) {
-                    const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
-                    let posText = '';
-                    if (dayAssign.angio === doc.id) posText = '血管攝影';
-                    else if (dayAssign.spec === doc.id) posText = '特殊攝影';
-                    else if (dayAssign.inj === doc.id) posText = '注射室';
-                    
-                    if (posText) {
-                        if (shift === 'O') {
-                            shift = `(${posText})`;
-                        } else {
-                            shift = `${shift}(${posText})`;
-                        }
-                    }
-                }
-
-                row.push(shift);
-                
-                // Calculate shift counts using original values
-                const origShift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
-                if (origShift === 'C1') c1Count++;
-                else if (origShift === 'C2') c2Count++;
-            }
-
-            row.push(c1Count + c2Count);
-            row.push(c1Count);
-            row.push(c2Count);
-
-            csvRows.push(row.join(','));
-        });
-
-        const csvContent = '\uFEFF' + csvRows.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        
-        link.setAttribute('href', url);
-        link.setAttribute('download', `住院醫師值班表_${state.currentMonth}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-}
 
 // Update calendar full view UI (expand to show all days or constraint height)
 function updateFullViewUI() {
@@ -2880,5 +3033,202 @@ function updateFullViewUI() {
         `;
         btn.classList.remove('active');
     }
+}
+
+// Initialize single day modal locks display
+function initModalLocks(day) {
+    const isLastMonth = (day === 'last-month');
+    if (isLastMonth) {
+        const lockButtons = document.querySelectorAll('#daily-editor-modal .btn-lock');
+        lockButtons.forEach(btn => btn.style.display = 'none');
+        return;
+    }
+    
+    const wd = getWeekday(Number(day));
+    const monthLocks = state.lockedShifts[state.currentMonth] || {};
+    
+    const lockConfigs = [
+        { id: 'btn-lock-c1', key: `${day}_C1`, visible: state.activeTab === 'duty' },
+        { id: 'btn-lock-c2', key: `${day}_C2`, visible: state.activeTab === 'duty' },
+        { id: 'btn-lock-angio', key: `${day}_angio`, visible: state.activeTab === 'duty' && wd.num === 6 },
+        { id: 'btn-lock-spec', key: `${day}_spec`, visible: state.activeTab === 'duty' && wd.num === 6 },
+        { id: 'btn-lock-inj', key: `${day}_inj`, visible: state.activeTab === 'duty' && wd.num === 6 },
+        { id: 'btn-lock-am', key: `${day}_AM`, visible: state.activeTab === 'spec' && wd.num !== 6 },
+        { id: 'btn-lock-pm', key: `${day}_PM`, visible: state.activeTab === 'spec' && wd.num !== 6 }
+    ];
+    
+    lockConfigs.forEach(cfg => {
+        const btn = document.getElementById(cfg.id);
+        if (!btn) return;
+        
+        if (!cfg.visible) {
+            btn.style.display = 'none';
+            return;
+        }
+        
+        btn.style.display = 'flex';
+        const isLocked = !!monthLocks[cfg.key];
+        btn.dataset.locked = isLocked ? 'true' : 'false';
+        btn.dataset.lockKey = cfg.key;
+        
+        updateModalLockVisual(btn);
+    });
+}
+
+// Update single modal lock button visuals (color, icon, title)
+function updateModalLockVisual(btn) {
+    const isLocked = btn.dataset.locked === 'true';
+    if (isLocked) {
+        btn.innerHTML = `
+            <svg style="width:16px; height:16px; fill:#eab308;" viewBox="0 0 24 24">
+                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/>
+            </svg>
+        `;
+        btn.title = "已鎖定！自動排班時不會變動此指派。點擊解鎖";
+    } else {
+        btn.innerHTML = `
+            <svg style="width:16px; height:16px; fill:currentColor; opacity:0.4;" viewBox="0 0 24 24">
+                <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 12H6V10h12v10z"/>
+            </svg>
+        `;
+        btn.title = "未鎖定。點擊鎖定此指派，防止自動排班修改";
+    }
+}
+
+// Check if assigning a resident to a specific position on a specific day violates any scheduling rules
+function checkAssignmentViolation(docId, day, position) {
+    const violations = [];
+    const doc = state.residents.find(r => r.id === docId);
+    if (!doc) return violations;
+
+    const wd = getWeekday(day);
+    const month = state.currentMonth;
+
+    // 1. Vacation / Leave Check (All positions)
+    if (doc.offDays && doc.offDays.includes(day)) {
+        violations.push("該日為醫師請假（休假）日");
+    }
+
+    // 2. Saturday Positions Qualification check (angio, spec, inj)
+    if (position === 'angio' || position === 'spec' || position === 'inj') {
+        const hasQual = doc.satPositions ? doc.satPositions.includes(position) : true;
+        if (!hasQual) {
+            const posNames = { angio: '血管攝影', spec: '特殊攝影', inj: '注射室' };
+            violations.push(`該醫師無「${posNames[position]}」位置資格`);
+        }
+    }
+
+    // 3. Duty Shifts specific rules (C1, C2)
+    if (position === 'C1' || position === 'C2') {
+        // A. Weekday off-duty settings
+        if (state.rules.offWeekdays && doc.offWeekdays && doc.offWeekdays.includes(wd.num)) {
+            violations.push(`週${['日', '一', '二', '三', '四', '五', '六'][wd.num]}為不值班星期`);
+        }
+
+        // B. Maximum duty limit
+        if (state.rules.maxShifts) {
+            let shiftCount = 0;
+            for (let d = 1; d <= getDaysInMonth(); d++) {
+                if (d === day) continue; // skip today (simulate replacing)
+                const s = (state.schedule[month] || {})[`${docId}_${d}`];
+                if (s === 'C1' || s === 'C2') {
+                    shiftCount++;
+                }
+            }
+            if (shiftCount >= doc.maxShifts) {
+                violations.push(`值班天數達上限（上限 ${doc.maxShifts} 天）`);
+            }
+        }
+
+        // C. Consecutive duty check
+        if (state.rules.consecutiveDuty) {
+            const isDuty = (s) => s === 'C1' || s === 'C2';
+            
+            // Check day - 1
+            let prevDuty = false;
+            if (day > 1) {
+                const s = (state.schedule[month] || {})[`${docId}_${day - 1}`];
+                if (isDuty(s)) prevDuty = true;
+            } else {
+                // Cross-month last day of last month
+                const lastDuty = state.lastMonthLastDayDuty[month] || {};
+                if (lastDuty.C1 === docId || lastDuty.C2 === docId) prevDuty = true;
+            }
+
+            // Check day + 1
+            let nextDuty = false;
+            if (day < getDaysInMonth()) {
+                const s = (state.schedule[month] || {})[`${docId}_${day + 1}`];
+                if (isDuty(s)) nextDuty = true;
+            }
+
+            if (prevDuty || nextDuty) {
+                violations.push("違反「不得連續值班」之限制");
+            }
+        }
+
+        // D. QOD (Avoid alternate day duty)
+        if (state.rules.avoidQod) {
+            const isDuty = (s) => s === 'C1' || s === 'C2';
+            
+            // Check day - 2
+            let qodPrev = false;
+            if (day > 2) {
+                const s = (state.schedule[month] || {})[`${docId}_${day - 2}`];
+                if (isDuty(s)) qodPrev = true;
+            }
+            // Check day + 2
+            let qodNext = false;
+            if (day < getDaysInMonth() - 1) {
+                const s = (state.schedule[month] || {})[`${docId}_${day + 2}`];
+                if (isDuty(s)) qodNext = true;
+            }
+
+            if (qodPrev || qodNext) {
+                violations.push("違反「避開隔日值班」之限制");
+            }
+        }
+    }
+
+    // 4. Special Photography specific rules (AM, PM)
+    if (position === 'AM' || position === 'PM') {
+        // A. Weekday spec-off AM/PM setting
+        if (position === 'AM') {
+            if (doc.specOffWeekdays && doc.specOffWeekdays.AM && doc.specOffWeekdays.AM.includes(wd.num)) {
+                violations.push(`週${['日', '一', '二', '三', '四', '五', '六'][wd.num]}為不排 AM 特攝日`);
+            }
+        } else {
+            if (doc.specOffWeekdays && doc.specOffWeekdays.PM && doc.specOffWeekdays.PM.includes(wd.num)) {
+                violations.push(`週${['日', '一', '二', '三', '四', '五', '六'][wd.num]}為不排 PM 特攝日`);
+            }
+        }
+
+        // B. PM spec check: previous day duty check
+        if (position === 'PM') {
+            const isDuty = (s) => s === 'C1' || s === 'C2';
+            let prevDuty = false;
+            if (day === 1) {
+                const lastDuty = state.lastMonthLastDayDuty[month] || {};
+                if (lastDuty.C1 === docId || lastDuty.C2 === docId) prevDuty = true;
+            } else {
+                const s = (state.schedule[month] || {})[`${docId}_${day - 1}`];
+                if (isDuty(s)) prevDuty = true;
+            }
+            if (prevDuty) {
+                violations.push("前日值班者今日下午不得值特攝");
+            }
+        }
+
+        // C. Double assignment check: AM and PM on the same weekday
+        if (wd.num !== 6) {
+            const otherPos = position === 'AM' ? 'PM' : 'AM';
+            const otherDocId = (state.specSchedule[month] || {})[`${day}_${otherPos}`];
+            if (otherDocId === docId) {
+                violations.push("該日已被指派為另一特攝時段（雙值）");
+            }
+        }
+    }
+
+    return violations;
 }
 

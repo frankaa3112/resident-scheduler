@@ -694,7 +694,16 @@ main {
     font-style: italic;
 }
 
-/* Daily Shift Editor Modal */
+/* Daily Shift Editor Modal Layouts */
+#daily-editor-modal .modal-content {
+    max-width: 480px;
+    transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#daily-editor-modal.is-sat-layout .modal-content {
+    max-width: 760px;
+}
+
 .daily-editor-section {
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: var(--border-radius-md);
@@ -747,6 +756,21 @@ main {
 .doctor-checkbox-label.is-checked {
     background: rgba(6, 182, 212, 0.08);
     border-color: rgba(6, 182, 212, 0.3);
+}
+
+.doctor-checkbox-label.has-violations {
+    border-color: rgba(245, 158, 11, 0.35) !important;
+    background: rgba(245, 158, 11, 0.02) !important;
+    color: #fbbf24 !important;
+}
+
+.doctor-checkbox-label.has-violations:hover {
+    background: rgba(245, 158, 11, 0.06) !important;
+    border-color: rgba(245, 158, 11, 0.5) !important;
+}
+
+.doctor-checkbox-label.has-violations input[type="checkbox"] {
+    accent-color: #fbbf24;
 }
 
 /* Statistics and Alerts Dashboard Panel */

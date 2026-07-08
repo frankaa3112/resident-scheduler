@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>住院醫師排班系統 - Resident Scheduling System</title>
-    <meta name="description" content="專業的住院醫師排班與衝突驗證系統，支援自動排班、規則設定與 CSV 匯出">
+    <meta name="description" content="專業的住院醫師排班與衝突驗證系統，支援自動排班、規則設定與課表管理">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -39,10 +39,15 @@
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                         自動排班
                     </button>
-                    <button class="btn btn-secondary" id="btn-export" title="匯出為 Excel/CSV 檔案">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                        匯出 CSV
+                    <button class="btn btn-outline" id="btn-export-json" title="匯出當月排班、人員條件與鎖定設定為 JSON 檔案">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                        匯出 JSON
                     </button>
+                    <button class="btn btn-outline" id="btn-import-json" title="匯入 JSON 排班與設定檔案">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        匯入 JSON
+                    </button>
+                    <input type="file" id="import-json-file" accept=".json" style="display: none;">
                     <button class="btn btn-outline" id="btn-print" title="列印或儲存為 PDF">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                         列印課表
@@ -398,45 +403,71 @@
             <form id="daily-editor-form">
                 <input type="hidden" id="daily-editor-day">
                 
-                <!-- First-line Duty (C1) -->
-                <div class="daily-editor-section" id="daily-editor-c1-section">
-                    <h4 style="color: var(--shift-c1-text);">
-                        <span class="shift-badge shift-c1" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C1</span>
-                        一線值班 (First-line Duty)
-                    </h4>
-                    <div class="daily-editor-checkboxes" id="daily-editor-c1-checkboxes">
-                        <!-- Checkboxes dynamically inserted here -->
-                    </div>
-                </div>
-
-                <!-- Second-line Duty (C2) -->
-                <div class="daily-editor-section" id="daily-editor-c2-section">
-                    <h4 style="color: var(--shift-c2-text);">
-                        <span class="shift-badge shift-c2" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C2</span>
-                        二線值班 (Second-line Duty)
-                    </h4>
-                    <div class="daily-editor-checkboxes" id="daily-editor-c2-checkboxes">
-                        <!-- Checkboxes dynamically inserted here -->
-                    </div>
-                </div>
-
-                <!-- Saturday Positions (Only visible on Saturdays) -->
-                <div class="daily-editor-section" id="daily-editor-sat-section" style="display: none; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px; margin-top: 15px;">
-                    <h4 style="color: var(--accent-cyan); margin-bottom: 10px;">
-                        📅 週六特殊位置負責人分配
-                    </h4>
-                    <div style="display: flex; flex-direction: column; gap: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="sat-select-angio" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">血管攝影室負責人 (Angio)</label>
-                            <select id="sat-select-angio" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                <!-- Layout Container for Duty Mode (Allows side-by-side on Saturdays) -->
+                <div id="daily-editor-duty-layout" style="display: flex; gap: 20px; width: 100%;">
+                    <!-- Left Column: C1 & C2 -->
+                    <div id="daily-editor-left-column" style="flex: 1.1; display: flex; flex-direction: column; gap: 15px; min-width: 0;">
+                        <!-- First-line Duty (C1) -->
+                        <div class="daily-editor-section" id="daily-editor-c1-section" style="margin-bottom: 0;">
+                            <h4 style="color: var(--shift-c1-text); display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span style="display: flex; align-items: center;">
+                                    <span class="shift-badge shift-c1" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C1</span>
+                                    一線值班 (First-line Duty)
+                                </span>
+                                <button type="button" class="btn-lock" id="btn-lock-c1" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                                </button>
+                            </h4>
+                            <div class="daily-editor-checkboxes" id="daily-editor-c1-checkboxes">
+                                <!-- Checkboxes dynamically inserted here -->
+                            </div>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="sat-select-spec" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">特殊攝影負責人 (Spec)</label>
-                            <select id="sat-select-spec" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+
+                        <!-- Second-line Duty (C2) -->
+                        <div class="daily-editor-section" id="daily-editor-c2-section" style="margin-bottom: 0;">
+                            <h4 style="color: var(--shift-c2-text); display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span style="display: flex; align-items: center;">
+                                    <span class="shift-badge shift-c2" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">C2</span>
+                                    二線值班 (Second-line Duty)
+                                </span>
+                                <button type="button" class="btn-lock" id="btn-lock-c2" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                                </button>
+                            </h4>
+                            <div class="daily-editor-checkboxes" id="daily-editor-c2-checkboxes">
+                                <!-- Checkboxes dynamically inserted here -->
+                            </div>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="sat-select-inj" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">注射室負責人 (Inj)</label>
-                            <select id="sat-select-inj" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                    </div>
+
+                    <!-- Right Column: Saturday Positions (Only visible on Saturdays) -->
+                    <div class="daily-editor-section" id="daily-editor-sat-section" style="display: none; flex: 0.9; border-left: 1px solid rgba(255,255,255,0.08); padding-left: 20px; margin-top: 0; min-width: 0;">
+                        <h4 style="color: var(--accent-cyan); margin-bottom: 15px;">
+                            📅 週六特殊位置負責人分配
+                        </h4>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label for="sat-select-angio" style="font-size: 0.8rem; display: block; margin-bottom: 0;">血管攝影室負責人 (Angio)</label>
+                                    <button type="button" class="btn-lock" id="btn-lock-angio" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                                    </button>
+                                </div>
+                                <select id="sat-select-angio" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: var(--text-primary); outline: none; transition: border-color 0.2s;"></select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label for="sat-select-spec" style="font-size: 0.8rem; display: block; margin-bottom: 0;">特殊攝影負責人 (Spec)</label>
+                                    <button type="button" class="btn-lock" id="btn-lock-spec" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                                    </button>
+                                </div>
+                                <select id="sat-select-spec" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: var(--text-primary); outline: none; transition: border-color 0.2s;"></select>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <label for="sat-select-inj" style="font-size: 0.8rem; display: block; margin-bottom: 0;">注射室負責人 (Inj)</label>
+                                    <button type="button" class="btn-lock" id="btn-lock-inj" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 2px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                                    </button>
+                                </div>
+                                <select id="sat-select-inj" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: var(--text-primary); outline: none; transition: border-color 0.2s;"></select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -444,21 +475,29 @@
                 <!-- Special Photography (Only visible in Special Photography view) -->
                 <div id="daily-editor-spec-section" style="display: none;">
                     <div class="daily-editor-section" id="daily-editor-spec-am-section">
-                        <h4 style="color: var(--accent-cyan); margin-bottom: 10px;">
-                            <span class="shift-badge shift-am" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">AM</span>
-                            上午特殊攝影人員 (AM Staff)
+                        <h4 style="color: var(--accent-cyan); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <span style="display: flex; align-items: center;">
+                                <span class="shift-badge shift-am" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">AM</span>
+                                上午特殊攝影人員 (AM Staff)
+                            </span>
+                            <button type="button" class="btn-lock" id="btn-lock-am" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                            </button>
                         </h4>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <select id="spec-select-am" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                            <select id="spec-select-am" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: var(--text-primary); outline: none; transition: border-color 0.2s;"></select>
                         </div>
                     </div>
                     <div class="daily-editor-section" id="daily-editor-spec-pm-section">
-                        <h4 style="color: var(--accent-purple); margin-bottom: 10px;">
-                            <span class="shift-badge shift-pm" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">PM</span>
-                            下午特殊攝影人員 (PM Staff)
+                        <h4 style="color: var(--accent-purple); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <span style="display: flex; align-items: center;">
+                                <span class="shift-badge shift-pm" style="width:18px; height:18px; font-size:0.6rem; margin-right:4px;">PM</span>
+                                下午特殊攝影人員 (PM Staff)
+                            </span>
+                            <button type="button" class="btn-lock" id="btn-lock-pm" title="鎖定此指派，防止自動排班修改" style="background: none; border: none; padding: 4px; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; transition: all 0.2s;">
+                            </button>
                         </h4>
                         <div class="form-group" style="margin-bottom: 0;">
-                            <select id="spec-select-pm" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: rgba(0,0,0,0.2); border: 1px solid var(--panel-border); color: var(--text-primary);"></select>
+                            <select id="spec-select-pm" style="width: 100%; padding: 8px; border-radius: var(--border-radius-md); background: #0f172a; border: 1px solid rgba(255,255,255,0.15); color: var(--text-primary); outline: none; transition: border-color 0.2s;"></select>
                         </div>
                     </div>
                     <div id="daily-editor-spec-saturday-note" style="font-size:0.8rem; color:var(--text-secondary); margin-top: 10px; text-align: center; display: none;">

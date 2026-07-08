@@ -34,15 +34,15 @@ const SHIFT_TYPES = {
 
 // Initial/Default Doctors List (No PGY, with weekly off-duty weekday settings and multiple tiers)
 const DEFAULT_RESIDENTS = [
-    { id: '1', name: '醫師一', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '2', name: '醫師二', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '3', name: '醫師三', level: 'R4 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '4', name: '醫師四', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '5', name: '醫師五', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '6', name: '醫師六', level: 'R3 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '7', name: '醫師七', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#6366f1', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '8', name: '醫師八', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0d9488', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
-    { id: '9', name: '醫師九', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } }
+    { id: '1', name: '翔', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#3b82f6', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '2', name: '佩', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#10b981', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '3', name: '蓁', level: 'R4 (住院醫師)', tiers: ['second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#a855f7', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '4', name: '江', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#d97706', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '5', name: '評', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#ec4899', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '6', name: '佳', level: 'R3 (住院醫師)', tiers: ['first', 'second'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0891b2', satPositions: ['angio', 'spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '7', name: '珞', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#6366f1', satPositions: ['spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '8', name: '岱', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#0d9488', satPositions: ['spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } },
+    { id: '9', name: '佑', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e', satPositions: ['spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } }
 ];
 
 // Initialize the Application

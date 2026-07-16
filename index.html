@@ -35,6 +35,10 @@
                 </div>
                 
                 <div class="button-group">
+                    <button class="btn btn-outline" id="btn-undo" title="復原上一步操作 (Ctrl+Z)" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 7"/></svg>
+                        復原
+                    </button>
                     <button class="btn btn-primary" id="btn-auto-schedule" title="使用排班演算法自動分配班表">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
                         自動排班
@@ -99,6 +103,10 @@
                         <input type="checkbox" id="rule-off-days" data-rule="offDays" checked>
                         <label for="rule-off-days"><strong>盡量符合預約休假</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">醫師設定的休假日期優先安排 Off。</span></label>
                     </div>
+                    <div class="rule-item">
+                        <input type="checkbox" id="rule-weekend-fair" data-rule="weekendFair" checked>
+                        <label for="rule-weekend-fair"><strong>假日與週五公平分配</strong><br><span style="font-size:0.75rem; color:var(--text-muted);">盡量平均分配每位醫師的週五、週六、週日值班次數，避免同一人同月內某一天（如週六）值班達 3 次以上。</span></label>
+                    </div>
                 </div>
             </div>
 
@@ -126,6 +134,15 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- National Holiday Settings -->
+            <div class="panel-card">
+                <div class="panel-title">
+                    <span>本月國定假日</span>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px;">輸入本月國定假日日期，該天將以「假日人力需求」計算並納入公平排班</div>
+                <input type="text" id="holiday-days-input" placeholder="例如: 1, 10, 23" style="width: 100%; padding: 8px; border-radius: var(--border-radius-sm); background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); color: var(--text-primary); outline: none;">
             </div>
 
             <!-- Last Month Last Day Duty Settings -->

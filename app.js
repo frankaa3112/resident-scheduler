@@ -45,12 +45,52 @@ const DEFAULT_RESIDENTS = [
     { id: '9', name: '佑', level: 'R2 (住院醫師)', tiers: ['first'], offWeekdays: [], maxShifts: 8, offDays: [], color: '#f43f5e', satPositions: ['spec', 'inj'], specOffWeekdays: { AM: [], PM: [] } }
 ];
 
+// Undo history: snapshots of `state` taken right before a destructive/mutating
+// action, so the user can revert a mistake (accidental clear, bad import, etc.)
+let undoStack = [];
+const MAX_UNDO_STEPS = 20;
+
 // Initialize the Application
 document.addEventListener('DOMContentLoaded', () => {
     loadData();
     initEventListeners();
     renderAll();
 });
+
+// Record a snapshot of the current state. Call this immediately BEFORE any
+// action that mutates `state`, so the pre-change version is what gets restored.
+function pushUndoState() {
+    try {
+        undoStack.push(JSON.stringify(state));
+        if (undoStack.length > MAX_UNDO_STEPS) {
+            undoStack.shift();
+        }
+        updateUndoButtonState();
+    } catch (e) {
+        console.error('Failed to record undo snapshot', e);
+    }
+}
+
+// Revert to the most recent snapshot on the undo stack, if any.
+function undoLastAction() {
+    if (undoStack.length === 0) return;
+    const snapshot = undoStack.pop();
+    try {
+        state = JSON.parse(snapshot);
+        saveData();
+        renderAll();
+    } catch (e) {
+        console.error('Failed to undo', e);
+    } finally {
+        updateUndoButtonState();
+    }
+}
+
+// Enable/disable the undo button based on whether there's anything to revert.
+function updateUndoButtonState() {
+    const btn = document.getElementById('btn-undo');
+    if (btn) btn.disabled = undoStack.length === 0;
+}
 
 // Load data from LocalStorage or load defaults
 function loadData() {
@@ -150,6 +190,13 @@ function loadData() {
             if (!state.lockedShifts[state.currentMonth]) {
                 state.lockedShifts[state.currentMonth] = {};
             }
+            // Ensure holidays (per-month list of national holiday day numbers) is initialized
+            if (!state.holidays || typeof state.holidays !== 'object') {
+                state.holidays = {};
+            }
+            if (!state.holidays[state.currentMonth]) {
+                state.holidays[state.currentMonth] = [];
+            }
             // Strip out D and N assignments from schedule across all months
             Object.keys(state.schedule).forEach(month => {
                 if (state.schedule[month] && typeof state.schedule[month] === 'object') {
@@ -186,6 +233,8 @@ function loadDefaults() {
     state.lastMonthLastDayDuty[state.currentMonth] = { C1: "", C2: "" };
     state.lockedShifts = {};
     state.lockedShifts[state.currentMonth] = {};
+    state.holidays = {};
+    state.holidays[state.currentMonth] = [];
     state.activeTab = 'duty';
     saveData();
 }
@@ -205,11 +254,41 @@ function getWeekday(day) {
     const [year, month] = state.currentMonth.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    const holidayDays = (state.holidays && state.holidays[state.currentMonth]) || [];
+    const isHoliday = holidayDays.includes(day);
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
     return {
         name: weekdays[date.getDay()],
         num: date.getDay(), // 0 for Sun, 6 for Sat
-        isWeekend: date.getDay() === 0 || date.getDay() === 6
+        isWeekend: isWeekend,
+        isHoliday: isHoliday,
+        // Days that should be staffed at "holiday" level (weekend requirement tier):
+        // actual Sat/Sun, plus any day manually marked as a national holiday.
+        isOffRequirement: isWeekend || isHoliday
     };
+}
+
+// Escape a string for safe insertion into HTML content or double-quoted attributes.
+// Needed anywhere user-editable data (resident names, levels, etc.) is inserted via
+// innerHTML, since that data can come from manual entry or an imported JSON file.
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// Validate that a color string is a plain hex color before using it inside a style
+// attribute. Falls back to a safe default if it looks unexpected (e.g. tampered or
+// imported data), preventing it from being used to break out of the attribute.
+function sanitizeColor(color) {
+    if (typeof color === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+        return color;
+    }
+    return '#64748b';
 }
 
 // Helper to get dynamic color scheme for each doctor based on their index in the list (Opaque, border-less)
@@ -218,11 +297,28 @@ function getDoctorColorStyles(docId) {
     if (!doc || !doc.color) {
         return { bg: '#64748b', text: '#ffffff' };
     }
-    return { bg: doc.color, text: '#ffffff' };
+    return { bg: sanitizeColor(doc.color), text: '#ffffff' };
 }
 
 // Initializing DOM events
 function initEventListeners() {
+    // Hover a doctor's name on the calendar to highlight all of their shifts
+    initCalendarHoverHighlight();
+
+    // Undo button + Ctrl/Cmd+Z keyboard shortcut
+    const undoBtn = document.getElementById('btn-undo');
+    if (undoBtn) {
+        undoBtn.addEventListener('click', () => undoLastAction());
+    }
+    updateUndoButtonState();
+    document.addEventListener('keydown', (e) => {
+        const isUndoCombo = (e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z');
+        if (isUndoCombo) {
+            e.preventDefault();
+            undoLastAction();
+        }
+    });
+
     // Sidebar toggle fold/unfold functionality
     const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
     const appContainer = document.querySelector('.app-container');
@@ -384,6 +480,8 @@ function initEventListeners() {
             return false;
         }
 
+        pushUndoState();
+
         if (id) {
             // Edit existing
             const doc = state.residents.find(r => r.id === id);
@@ -460,6 +558,7 @@ function initEventListeners() {
         const ruleKey = cb.dataset.rule;
         cb.checked = state.rules[ruleKey];
         cb.addEventListener('change', (e) => {
+            pushUndoState();
             state.rules[ruleKey] = e.target.checked;
             saveData();
             validateSchedule();
@@ -500,12 +599,14 @@ function initEventListeners() {
         clearBtn.addEventListener('click', () => {
             if (state.activeTab === 'spec') {
                 if (confirm('確定要清除本月的所有特殊攝影排班嗎？')) {
+                    pushUndoState();
                     state.specSchedule[state.currentMonth] = {};
                     saveData();
                     renderAll();
                 }
             } else {
                 if (confirm('確定要清除本月的所有排班嗎？')) {
+                    pushUndoState();
                     state.schedule[state.currentMonth] = {};
                     state.saturdayAssignments[state.currentMonth] = {};
                     saveData();
@@ -520,6 +621,7 @@ function initEventListeners() {
     if (resetBtn) {
         resetBtn.addEventListener('click', () => {
             if (confirm('確定要重設為預設醫師名單與排班資料嗎？')) {
+                pushUndoState();
                 loadDefaults();
                 renderAll();
             }
@@ -582,6 +684,7 @@ function initEventListeners() {
                     }
 
                     // Apply imported data
+                    pushUndoState();
                     state.residents = importedData.residents;
                     state.schedule[state.currentMonth] = importedData.schedule || {};
                     state.specSchedule[state.currentMonth] = importedData.specSchedule || {};
@@ -624,6 +727,7 @@ function initEventListeners() {
             el.addEventListener('change', (e) => {
                 const val = Math.max(0, parseInt(e.target.value) || 0);
                 e.target.value = val;
+                pushUndoState();
 
                 if (id === 'req-wd-c1') state.requirements.weekday.C1 = val;
                 else if (id === 'req-wd-c2') state.requirements.weekday.C2 = val;
@@ -639,12 +743,28 @@ function initEventListeners() {
         }
     });
 
+    // National holiday input listener
+    const holidayInput = document.getElementById('holiday-days-input');
+    if (holidayInput) {
+        holidayInput.addEventListener('change', (e) => {
+            pushUndoState();
+            const days = e.target.value.split(',')
+                .map(s => Number(s.trim()))
+                .filter(n => !isNaN(n) && n >= 1 && n <= 31);
+            if (!state.holidays) state.holidays = {};
+            state.holidays[state.currentMonth] = days;
+            saveData();
+            renderAll();
+        });
+    }
+
     // Last month last day duty listeners
     const lastDayC1 = document.getElementById('last-day-c1');
     const lastDayC2 = document.getElementById('last-day-c2');
     
     if (lastDayC1) {
         lastDayC1.addEventListener('change', (e) => {
+            pushUndoState();
             if (!state.lastMonthLastDayDuty[state.currentMonth]) {
                 state.lastMonthLastDayDuty[state.currentMonth] = { C1: '', C2: '' };
             }
@@ -655,6 +775,7 @@ function initEventListeners() {
     }
     if (lastDayC2) {
         lastDayC2.addEventListener('change', (e) => {
+            pushUndoState();
             if (!state.lastMonthLastDayDuty[state.currentMonth]) {
                 state.lastMonthLastDayDuty[state.currentMonth] = { C1: '', C2: '' };
             }
@@ -765,6 +886,7 @@ function editDoctor(id) {
 // Delete doctor profile
 function deleteDoctor(id) {
     if (confirm('確定要刪除這位醫師嗎？此動作亦會清除其所有的排班。')) {
+        pushUndoState();
         state.residents = state.residents.filter(r => r.id !== id);
         
         // Remove shifts for this doctor across all months
@@ -810,6 +932,7 @@ function deleteDoctor(id) {
 function renderAll() {
     syncRequirementsInputs();
     syncLastMonthDutySelects();
+    syncHolidayInput();
     renderDoctorList();
     renderGrid();
     validateSchedule();
@@ -823,6 +946,14 @@ function renderAll() {
     }
 }
 
+// Sync the national holiday input field with the currently selected month's saved list
+function syncHolidayInput() {
+    const holidayInput = document.getElementById('holiday-days-input');
+    if (!holidayInput) return;
+    const days = (state.holidays && state.holidays[state.currentMonth]) || [];
+    holidayInput.value = days.join(', ');
+}
+
 function syncLastMonthDutySelects() {
     const lastDayC1 = document.getElementById('last-day-c1');
     const lastDayC2 = document.getElementById('last-day-c2');
@@ -830,7 +961,7 @@ function syncLastMonthDutySelects() {
 
     let optHtml = '<option value="">-- 未值班 --</option>';
     state.residents.forEach(doc => {
-        optHtml += `<option value="${doc.id}">${doc.name} (${doc.level.split(' ')[0]})</option>`;
+        optHtml += `<option value="${doc.id}">${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})</option>`;
     });
 
     const monthDuty = state.lastMonthLastDayDuty[state.currentMonth] || {};
@@ -916,10 +1047,10 @@ function renderDoctorList() {
         item.innerHTML = `
             <div class="doc-info">
                 <div class="doc-name-container">
-                    <span class="doc-name">${doc.name}</span>
+                    <span class="doc-name">${escapeHtml(doc.name)}</span>
                     ${tierBadges}
                 </div>
-                <div class="doc-level">${doc.level} (限值 ${doc.maxShifts} 班)</div>
+                <div class="doc-level">${escapeHtml(doc.level)} (限值 ${doc.maxShifts} 班)</div>
                 ${offWeekdaysText}
                 ${satPositionsText}
                 ${specOffText}
@@ -934,6 +1065,64 @@ function renderDoctorList() {
             </div>
         `;
         listContainer.appendChild(item);
+    });
+}
+
+// Dim every shift slot on the calendar except the ones belonging to the given doctor,
+// so their distribution across the month is easy to see at a glance.
+function highlightDoctorShifts(docId) {
+    const calendarGrid = document.querySelector('#grid-container .calendar-grid');
+    if (!calendarGrid) return;
+    calendarGrid.classList.add('highlighting-active');
+    try {
+        calendarGrid.querySelectorAll(`[data-doc-id="${CSS.escape(String(docId))}"]`).forEach(el => {
+            el.classList.add('doc-highlighted');
+        });
+    } catch (e) {
+        // Ignore malformed doc IDs rather than breaking the hover interaction
+    }
+}
+
+// Clear any active doctor shift highlight
+function clearDoctorHighlight() {
+    const calendarGrid = document.querySelector('#grid-container .calendar-grid');
+    if (!calendarGrid) return;
+    calendarGrid.classList.remove('highlighting-active');
+    calendarGrid.querySelectorAll('.doc-highlighted').forEach(el => el.classList.remove('doc-highlighted'));
+}
+
+// Track which doctor is currently highlighted so hovering between nested
+// elements of the same shift slot (e.g. the label span inside it) doesn't flicker.
+let hoveredCalendarDocId = null;
+
+// Wire up hover-to-highlight directly on the calendar: hovering any shift slot that
+// shows a doctor's name highlights every other shift of theirs on the visible month,
+// so their Fri/Sat/Sun (and overall) distribution is easy to eyeball. Uses event
+// delegation on the (persistent) grid container, since its contents are re-rendered
+// via innerHTML on every update.
+function initCalendarHoverHighlight() {
+    const gridContainer = document.getElementById('grid-container');
+    if (!gridContainer) return;
+
+    gridContainer.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-doc-id]');
+        const docId = target ? target.dataset.docId : null;
+        if (docId && docId !== hoveredCalendarDocId) {
+            hoveredCalendarDocId = docId;
+            highlightDoctorShifts(docId);
+        }
+    });
+
+    gridContainer.addEventListener('mouseout', (e) => {
+        const leavingEl = e.target.closest('[data-doc-id]');
+        if (!leavingEl) return;
+        const related = e.relatedTarget;
+        // Still inside a slot belonging to the same doctor (e.g. moved to a child span)? Keep it highlighted.
+        if (related && related.closest && related.closest(`[data-doc-id="${leavingEl.dataset.docId}"]`)) {
+            return;
+        }
+        hoveredCalendarDocId = null;
+        clearDoctorHighlight();
     });
 }
 
@@ -972,10 +1161,10 @@ function renderGrid() {
         const c2Color = c2Doc ? getDoctorColorStyles(c2Doc.id) : null;
 
         const prevC1Html = c1Doc
-            ? `<div class="day-shift-slot" style="background-color:${c1Color.bg}; border:none; color:${c1Color.text};"><span class="slot-label shift-c1" style="background:rgba(255,255,255,0.25); color:${c1Color.text};">C1</span><span class="slot-staff" style="color:${c1Color.text}; font-weight:600;">${c1Doc.name}</span></div>`
+            ? `<div class="day-shift-slot" data-doc-id="${escapeHtml(c1Doc.id)}" style="background-color:${c1Color.bg}; border:none; color:${c1Color.text};"><span class="slot-label shift-c1" style="background:rgba(255,255,255,0.25); color:${c1Color.text};">C1</span><span class="slot-staff" style="color:${c1Color.text}; font-weight:600;">${escapeHtml(c1Doc.name)}</span></div>`
             : `<div class="day-shift-slot slot-c1" style="opacity:0.6;"><span class="slot-label">C1</span><span class="slot-staff">未設定</span></div>`;
         const prevC2Html = c2Doc
-            ? `<div class="day-shift-slot" style="background-color:${c2Color.bg}; border:none; color:${c2Color.text};"><span class="slot-label shift-c2" style="background:rgba(255,255,255,0.25); color:${c2Color.text};">C2</span><span class="slot-staff" style="color:${c2Color.text}; font-weight:600;">${c2Doc.name}</span></div>`
+            ? `<div class="day-shift-slot" data-doc-id="${escapeHtml(c2Doc.id)}" style="background-color:${c2Color.bg}; border:none; color:${c2Color.text};"><span class="slot-label shift-c2" style="background:rgba(255,255,255,0.25); color:${c2Color.text};">C2</span><span class="slot-staff" style="color:${c2Color.text}; font-weight:600;">${escapeHtml(c2Doc.name)}</span></div>`
             : `<div class="day-shift-slot slot-c2" style="opacity:0.6;"><span class="slot-label">C2</span><span class="slot-staff">未設定</span></div>`;
 
         const prevMonthCard = `
@@ -1006,7 +1195,7 @@ function renderGrid() {
     // Render actual day cells
     for (let d = 1; d <= daysCount; d++) {
         const wd = getWeekday(d);
-        const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
+        const req = wd.isOffRequirement ? state.requirements.weekend : state.requirements.weekday;
 
         // Group doctor assignments for this day
         let dayStaff = { C1: [], C2: [] };
@@ -1036,9 +1225,9 @@ function renderGrid() {
                     const color = getDoctorColorStyles(doc.id);
                     const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_C1`];
                     c1Html += `
-                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                        <div class="day-shift-slot" data-doc-id="${escapeHtml(doc.id)}" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-c1" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C1</span>
-                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
+                            <span class="slot-staff" title="${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})" style="color: ${color.text}; font-weight: 600;">${escapeHtml(doc.name)}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 });
@@ -1066,9 +1255,9 @@ function renderGrid() {
                     const color = getDoctorColorStyles(doc.id);
                     const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_C2`];
                     c2Html += `
-                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                        <div class="day-shift-slot" data-doc-id="${escapeHtml(doc.id)}" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-c2" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">C2</span>
-                            <span class="slot-staff" title="${doc.name} (${doc.level.split(' ')[0]})" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
+                            <span class="slot-staff" title="${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})" style="color: ${color.text}; font-weight: 600;">${escapeHtml(doc.name)}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 });
@@ -1096,9 +1285,9 @@ function renderGrid() {
                     const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_${pos}`];
                     if (doc) {
                         tagsHtml += `
-                            <div class="sat-position-tag ${pos}" title="${posFullLabels[pos]}: ${doc.name}${isLocked ? ' (已鎖定)' : ''}" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
+                            <div class="sat-position-tag ${pos}" data-doc-id="${escapeHtml(doc.id)}" title="${posFullLabels[pos]}: ${escapeHtml(doc.name)}${isLocked ? ' (已鎖定)' : ''}" style="flex: 1; justify-content: center; padding: 2px; font-size: 0.7rem; margin-top: 0; min-width: 0; display: flex; align-items: center;">
                                 <span class="sat-position-label" style="padding: 1px 3px; font-size: 0.62rem; margin-right: 3px; border-radius: 2px; line-height: 1;">${posLabels[pos]}</span>
-                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
+                                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;">${escapeHtml(doc.name)}${isLocked ? goldLockIcon : ''}</span>
                             </div>
                         `;
                     } else {
@@ -1137,9 +1326,9 @@ function renderGrid() {
                 if (doc) {
                     const color = getDoctorColorStyles(doc.id);
                     amHtml = `
-                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                        <div class="day-shift-slot" data-doc-id="${escapeHtml(doc.id)}" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
-                            <span class="slot-staff" title="${doc.name} (週六特攝)${isLocked ? ' (已鎖定)' : ''}" style="color: ${color.text}; font-weight: 600;">${doc.name}${isLocked ? goldLockIcon : ''}</span>
+                            <span class="slot-staff" title="${escapeHtml(doc.name)} (週六特攝)${isLocked ? ' (已鎖定)' : ''}" style="color: ${color.text}; font-weight: 600;">${escapeHtml(doc.name)}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1163,9 +1352,9 @@ function renderGrid() {
                     const color = getDoctorColorStyles(amDoc.id);
                     const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_AM`];
                     amHtml = `
-                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                        <div class="day-shift-slot" data-doc-id="${escapeHtml(amDoc.id)}" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-am" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">AM</span>
-                            <span class="slot-staff" title="${amDoc.name}" style="color: ${color.text}; font-weight: 600;">${amDoc.name}${isLocked ? goldLockIcon : ''}</span>
+                            <span class="slot-staff" title="${escapeHtml(amDoc.name)}" style="color: ${color.text}; font-weight: 600;">${escapeHtml(amDoc.name)}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1181,9 +1370,9 @@ function renderGrid() {
                     const color = getDoctorColorStyles(pmDoc.id);
                     const isLocked = (state.lockedShifts[state.currentMonth] || {})[`${d}_PM`];
                     pmHtml = `
-                        <div class="day-shift-slot" style="background-color: ${color.bg}; border: none; color: ${color.text};">
+                        <div class="day-shift-slot" data-doc-id="${escapeHtml(pmDoc.id)}" style="background-color: ${color.bg}; border: none; color: ${color.text};">
                             <span class="slot-label shift-pm" style="background: rgba(255, 255, 255, 0.25); color: ${color.text};">PM</span>
-                            <span class="slot-staff" title="${pmDoc.name}" style="color: ${color.text}; font-weight: 600;">${pmDoc.name}${isLocked ? goldLockIcon : ''}</span>
+                            <span class="slot-staff" title="${escapeHtml(pmDoc.name)}" style="color: ${color.text}; font-weight: 600;">${escapeHtml(pmDoc.name)}${isLocked ? goldLockIcon : ''}</span>
                         </div>
                     `;
                 } else {
@@ -1199,10 +1388,10 @@ function renderGrid() {
         }
 
         html += `
-            <div class="calendar-day-card ${wd.isWeekend ? 'is-weekend' : ''} ${hasViolation ? 'has-violation' : ''}" 
+            <div class="calendar-day-card ${(wd.isWeekend || wd.isHoliday) ? 'is-weekend' : ''} ${hasViolation ? 'has-violation' : ''}"
                  onclick="openDailyEditor(${d})">
                 <div class="day-card-header">
-                    <span class="day-card-num">${d}</span>
+                    <span class="day-card-num">${d}${wd.isHoliday ? ' <span class=\'holiday-badge\' title=\'國定假日\'>假</span>' : ''}</span>
                     <span class="day-card-weekday">${wd.name}</span>
                 </div>
                 <div class="day-shift-list">
@@ -1279,7 +1468,7 @@ function openDailyEditor(day) {
                 wrapper.style.cssText = 'margin-bottom:8px;';
                 let optHtml = `<option value="">-- 未值班 --</option>`;
                 state.residents.filter(r => r.tiers && r.tiers.includes(tierFilter)).forEach(doc => {
-                    optHtml += `<option value="${doc.id}" ${currentVal === doc.id ? 'selected' : ''}>${doc.name} (${doc.level.split(' ')[0]})</option>`;
+                    optHtml += `<option value="${doc.id}" ${currentVal === doc.id ? 'selected' : ''}>${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})</option>`;
                 });
                 wrapper.innerHTML = `<label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">${label}</label><select data-lastmonth-tier="${tierFilter}" style="width:100%; padding:8px; border-radius:var(--border-radius-md); background:rgba(0,0,0,0.2); border:1px solid var(--panel-border); color:var(--text-primary);">${optHtml}</select>`;
                 return wrapper;
@@ -1308,7 +1497,7 @@ function openDailyEditor(day) {
             
             wrapper.innerHTML = `
                 <input type="checkbox" data-doc-id="${doc.id}" data-shift="${shiftCode}" ${isChecked ? 'checked' : ''}>
-                <span>${doc.name}${hasViolations ? ' ⚠️' : ''} <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level.split(' ')[0]}</span></span>
+                <span>${escapeHtml(doc.name)}${hasViolations ? ' ⚠️' : ''} <span style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(doc.level.split(' ')[0])}</span></span>
             `;
             
             const checkbox = wrapper.querySelector('input');
@@ -1401,7 +1590,7 @@ function openDailyEditor(day) {
                         const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
                         const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
 
-                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>★ ${doc.name} (${item.status})${qualText}${warningText}</option>`;
+                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>★ ${escapeHtml(doc.name)} (${item.status})${qualText}${warningText}</option>`;
                     });
                     
                     optHtml += '<option disabled>──────────</option>';
@@ -1426,7 +1615,7 @@ function openDailyEditor(day) {
                         const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
                         const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
 
-                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${doc.name}${qualText}${warningText}</option>`;
+                        optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${escapeHtml(doc.name)}${qualText}${warningText}</option>`;
                     });
                     return optHtml;
                 };
@@ -1475,7 +1664,7 @@ function openDailyEditor(day) {
                 const warningText = item.violations.length > 0 ? ` (⚠️ ${item.violations[0]})` : '';
                 const colorStyle = item.violations.length > 0 ? 'style="color: #fbbf24;"' : '';
                 const tooltip = item.violations.length > 0 ? `title="違反規則：&#10;${item.violations.map(v => '• ' + v).join('&#10;')}"` : '';
-                optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${doc.name} (${doc.level.split(' ')[0]})${warningText}</option>`;
+                optHtml += `<option value="${doc.id}" ${colorStyle} ${tooltip}>${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})${warningText}</option>`;
             });
             return optHtml;
         };
@@ -1493,7 +1682,7 @@ function openDailyEditor(day) {
                 // Populate options including the Saturday spec doctor (even if unqualified)
                 let amOpts = '<option value="">-- 未指派 --</option>';
                 state.residents.forEach(doc => {
-                    amOpts += `<option value="${doc.id}">${doc.name} (${doc.level.split(' ')[0]})</option>`;
+                    amOpts += `<option value="${doc.id}">${escapeHtml(doc.name)} (${escapeHtml(doc.level.split(' ')[0])})</option>`;
                 });
                 selectAm.innerHTML = amOpts;
                 selectAm.value = satSpecId;
@@ -1561,6 +1750,7 @@ function handleDailyCheckboxChange(e) {
 
 // Save Daily schedule changes
 function saveDailyShifts() {
+    pushUndoState();
     const day = document.getElementById('daily-editor-day').value;
     const modal = document.getElementById('daily-editor-modal');
 
@@ -1863,6 +2053,7 @@ function validateSchedule() {
         // Original Resident Duty Scheduler Validation
         state.residents.forEach(doc => {
             let docShiftsCount = 0;
+            const weekendWeekdayCounts = { 0: 0, 5: 0, 6: 0 };
 
             for (let d = 1; d <= daysCount; d++) {
                 const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${d}`] || 'O';
@@ -1870,6 +2061,10 @@ function validateSchedule() {
 
                 if (shift !== 'O') {
                     docShiftsCount++;
+                }
+
+                if ((shift === 'C1' || shift === 'C2') && (wd.num === 0 || wd.num === 5 || wd.num === 6)) {
+                    weekendWeekdayCounts[wd.num]++;
                 }
 
                 // 1. Weekly Off-duty Weekday Checker (避開特定星期幾)
@@ -1993,12 +2188,29 @@ function validateSchedule() {
                     message: `${doc.name} 本月值班數為 ${docShiftsCount} 班，超出設定上限 ${doc.maxShifts} 班`
                 });
             }
+
+            // 6. Weekend/Friday fairness: flag if this doctor got 3+ duties on the same
+            // Fri/Sat/Sun weekday this month (distribution should favor spreading it out)
+            if (state.rules.weekendFair) {
+                const weekdayFairLabels = { 0: '週日', 5: '週五', 6: '週六' };
+                [0, 5, 6].forEach(wdNum => {
+                    if (weekendWeekdayCounts[wdNum] >= 3) {
+                        state.warnings.push({
+                            docId: doc.id,
+                            docName: doc.name,
+                            day: null,
+                            type: 'weekendFair',
+                            message: `${doc.name} 本月「${weekdayFairLabels[wdNum]}」值班共 ${weekendWeekdayCounts[wdNum]} 次，分配較不平均，建議分散給其他醫師`
+                        });
+                    }
+                });
+            }
         });
 
         // 6. Shift coverage check
         for (let d = 1; d <= daysCount; d++) {
             const wd = getWeekday(d);
-            const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
+            const req = wd.isOffRequirement ? state.requirements.weekend : state.requirements.weekday;
 
             let counts = { C1: 0, C2: 0 };
             state.residents.forEach(doc => {
@@ -2170,7 +2382,7 @@ function renderWarnings() {
             <span class="warning-icon">${alertIcon}</span>
             <div>
                 <strong>${warn.day ? warn.day + ' 號' : '全月限制'}：</strong>
-                <span>${warn.message}</span>
+                <span>${escapeHtml(warn.message)}</span>
             </div>
         `;
         container.appendChild(alert);
@@ -2243,9 +2455,9 @@ function renderStats() {
             tr.innerHTML = `
                 <td>
                     <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color.bg}; margin-right:6px; vertical-align:middle;"></span>
-                    <strong>${doc.name}</strong> 
+                    <strong>${escapeHtml(doc.name)}</strong>
                     <br>
-                    <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level}</span>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(doc.level)}</span>
                 </td>
                 <td>
                     <div class="stats-bar-container">
@@ -2283,7 +2495,7 @@ function renderStats() {
                 if (shift in stats) stats[shift]++;
 
                 const isDuty = (s) => s === 'C1' || s === 'C2';
-                if (isDuty(shift) && getWeekday(d).isWeekend) {
+                if (isDuty(shift) && getWeekday(d).isOffRequirement) {
                     weekendDutyCount++;
                 }
             }
@@ -2306,10 +2518,10 @@ function renderStats() {
             tr.innerHTML = `
                 <td>
                     <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color.bg}; margin-right:6px; vertical-align:middle;"></span>
-                    <strong>${doc.name}</strong> 
+                    <strong>${escapeHtml(doc.name)}</strong>
                     ${tierBadges}
                     <br>
-                    <span style="font-size:0.7rem; color:var(--text-muted);">${doc.level}</span>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(doc.level)}</span>
                 </td>
                 <td>
                     <div class="stats-bar-container">
@@ -2332,6 +2544,8 @@ function runAutoScheduler() {
         alert('請先在側邊欄新增住院醫師！');
         return;
     }
+
+    pushUndoState();
 
     const loader = document.getElementById('loading-overlay');
     loader.classList.add('active');
@@ -2715,6 +2929,16 @@ function findSaturdayAssignment(day, tempSchedule) {
     return null;
 }
 
+// Whether a resident can ever be scheduled on a given weekday number (0=Sun..6=Sat),
+// used to compute a fair "target" pool for Friday/Saturday/Sunday balancing so we don't
+// count residents who are structurally excluded (e.g. weekly off-duty weekday) against
+// the spread.
+function isEligibleForWeekday(doc, wdNum) {
+    if (!doc.tiers || doc.tiers.length === 0) return false;
+    if (state.rules.offWeekdays && doc.offWeekdays && doc.offWeekdays.includes(wdNum)) return false;
+    return true;
+}
+
 // Core Heuristic CSP solver
 function solveSchedule() {
     const daysCount = getDaysInMonth();
@@ -2732,6 +2956,10 @@ function solveSchedule() {
                 totalShifts: 0,
                 maxShifts: doc.maxShifts,
                 weekendDuties: 0,
+                // Duty counts broken down by specific weekday (0=Sun...6=Sat), used to keep
+                // Fri/Sat/Sun duty spread evenly across residents (e.g. avoid one person
+                // getting 3+ Fridays in a single month).
+                weekdayCounts: { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
                 offDays: new Set(doc.offDays)
             };
         });
@@ -2740,7 +2968,7 @@ function solveSchedule() {
 
         for (let d = 1; d <= daysCount; d++) {
             const wd = getWeekday(d);
-            const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
+            const req = wd.isOffRequirement ? state.requirements.weekend : state.requirements.weekday;
 
             // Default to Off
             state.residents.forEach(doc => {
@@ -2762,7 +2990,8 @@ function solveSchedule() {
             lockedC1Docs.forEach(doc => {
                 tempSchedule[`${doc.id}_${d}`] = 'C1';
                 docStats[doc.id].totalShifts++;
-                if (wd.isWeekend) {
+                docStats[doc.id].weekdayCounts[wd.num]++;
+                if (wd.isOffRequirement) {
                     docStats[doc.id].weekendDuties++;
                 }
             });
@@ -2770,7 +2999,8 @@ function solveSchedule() {
             lockedC2Docs.forEach(doc => {
                 tempSchedule[`${doc.id}_${d}`] = 'C2';
                 docStats[doc.id].totalShifts++;
-                if (wd.isWeekend) {
+                docStats[doc.id].weekdayCounts[wd.num]++;
+                if (wd.isOffRequirement) {
                     docStats[doc.id].weekendDuties++;
                 }
             });
@@ -2851,9 +3081,19 @@ function solveSchedule() {
                     }
 
                     const isDuty = (s) => s === 'C1' || s === 'C2';
-                    if (wd.isWeekend && isDuty(shiftType) && state.rules.weekendFair) {
+                    if (wd.isOffRequirement && isDuty(shiftType) && state.rules.weekendFair) {
+                        // Overall balance of holiday/weekend workload across residents
                         scoreA += statsA.weekendDuties * 50;
                         scoreB += statsB.weekendDuties * 50;
+                    }
+                    // Specifically for Fri/Sat/Sun: strongly prefer whoever has the fewest
+                    // duties on this exact weekday so far, so each of Friday/Saturday/Sunday
+                    // ends up nearly equal across residents rather than just avoiding one
+                    // person hogging a single weekday. Weighted above total-shift balance
+                    // and QOD/overall-weekend spacing, but below explicit off-day requests.
+                    if ((wd.num === 5 || wd.num === 6 || wd.num === 0) && isDuty(shiftType) && state.rules.weekendFair) {
+                        scoreA += statsA.weekdayCounts[wd.num] * 300;
+                        scoreB += statsB.weekdayCounts[wd.num] * 300;
                     }
 
                     scoreA += Math.random() * 2;
@@ -2864,10 +3104,11 @@ function solveSchedule() {
 
                 const chosenDoc = candidates[0];
                 tempSchedule[`${chosenDoc.id}_${d}`] = shiftType;
-                
+
                 docStats[chosenDoc.id].totalShifts++;
+                docStats[chosenDoc.id].weekdayCounts[wd.num]++;
                 const isDuty = (s) => s === 'C1' || s === 'C2';
-                if (wd.isWeekend && isDuty(shiftType)) {
+                if (wd.isOffRequirement && isDuty(shiftType)) {
                     docStats[chosenDoc.id].weekendDuties++;
                 }
             }
@@ -2927,7 +3168,7 @@ function countTempScheduleViolations(tempSchedule, docStats, daysCount) {
         for (let d = 1; d <= daysCount; d++) {
             const shift = tempSchedule[`${doc.id}_${d}`] || 'O';
             const wd = getWeekday(d);
-            
+
             if (shift !== 'O') shiftCount++;
 
             const isDuty = (s) => s === 'C1' || s === 'C2';
@@ -2982,9 +3223,25 @@ function countTempScheduleViolations(tempSchedule, docStats, daysCount) {
         }
     });
 
+    // Fairness: for each of Friday/Saturday/Sunday, penalize any spread between the
+    // most- and least-scheduled eligible resident so counts converge to nearly equal,
+    // rather than only capping how many any single resident can accumulate.
+    if (state.rules.weekendFair) {
+        [0, 5, 6].forEach(wdNum => {
+            const eligibleCounts = state.residents
+                .filter(doc => isEligibleForWeekday(doc, wdNum))
+                .map(doc => docStats[doc.id].weekdayCounts[wdNum]);
+            if (eligibleCounts.length < 2) return;
+            const spread = Math.max(...eligibleCounts) - Math.min(...eligibleCounts);
+            if (spread > 1) {
+                violations += (spread - 1) * 40;
+            }
+        });
+    }
+
     for (let d = 1; d <= daysCount; d++) {
         const wd = getWeekday(d);
-        const req = wd.isWeekend ? state.requirements.weekend : state.requirements.weekday;
+        const req = wd.isOffRequirement ? state.requirements.weekend : state.requirements.weekday;
 
         let counts = { C1: 0, C2: 0 };
         state.residents.forEach(doc => {

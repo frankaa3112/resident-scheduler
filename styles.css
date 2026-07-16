@@ -157,6 +157,12 @@ h1 {
     transition: var(--transition-smooth);
 }
 
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .btn-primary {
     background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
     color: #ffffff;
@@ -605,6 +611,18 @@ main {
     color: var(--accent-cyan);
 }
 
+.holiday-badge {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #fff;
+    background: var(--color-danger, #ef4444);
+    border-radius: 3px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
 .day-card-weekday {
     font-size: 0.7rem;
     color: var(--text-muted);
@@ -656,6 +674,22 @@ main {
     background: var(--shift-c1-bg);
     color: var(--shift-c1-text);
     border-color: rgba(236, 72, 153, 0.15);
+}
+
+/* Hovering a doctor in the sidebar dims every other shift slot on the calendar so
+   that one person's Fri/Sat/Sun (and overall) distribution is easy to eyeball. */
+.calendar-grid.highlighting-active .day-shift-slot,
+.calendar-grid.highlighting-active .sat-position-tag {
+    opacity: 0.2;
+}
+
+.calendar-grid.highlighting-active .day-shift-slot.doc-highlighted,
+.calendar-grid.highlighting-active .sat-position-tag.doc-highlighted {
+    opacity: 1;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 10px rgba(255, 255, 255, 0.55);
+    transform: scale(1.05);
+    position: relative;
+    z-index: 2;
 }
 
 .day-shift-slot.slot-c2 {

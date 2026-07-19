@@ -704,11 +704,303 @@ function initEventListeners() {
         });
     }
 
-    // Print
+    // Export to Docx
+    function exportToDocx() {
+        if (!window.docx) {
+            alert("Word 匯出套件載入中，請稍候再試。若持續無法載入，請檢查您的網路連線。");
+            return;
+        }
+
+        const {
+            Document,
+            Packer,
+            Paragraph,
+            TextRun,
+            Table,
+            TableRow,
+            TableCell,
+            WidthType,
+            AlignmentType,
+            BorderStyle,
+            VerticalAlign
+        } = window.docx;
+
+        // 1. 解析年份與月份
+        const [year, month] = state.currentMonth.split('-').map(Number);
+        const daysCount = new Date(year, month, 0).getDate();
+        const firstDayIndexRaw = new Date(year, month - 1, 1).getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+        const firstDayIndex = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1; // 0 = Mon, 6 = Sun
+
+        // 2. 準備月曆表格的儲存格資料
+        const calendarCells = [];
+        
+        // 2.1 補足開頭空白
+        for (let i = 0; i < firstDayIndex; i++) {
+            calendarCells.push({ day: null, isWeekend: i >= 5 });
+        }
+        // 2.2 放入當月所有日期
+        for (let d = 1; d <= daysCount; d++) {
+            const dayRaw = new Date(year, month - 1, d).getDay();
+            const isWeekend = (dayRaw === 0 || dayRaw === 6);
+            calendarCells.push({ day: d, isWeekend });
+        }
+        // 2.3 補足結尾空白
+        while (calendarCells.length % 7 !== 0) {
+            const idx = calendarCells.length % 7;
+            calendarCells.push({ day: null, isWeekend: idx >= 5 });
+        }
+
+        // 3. 建立表格邊框樣式 (細實線)
+        const cellBorders = {
+            top: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+            left: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+            right: { style: BorderStyle.SINGLE, size: 4, color: "000000" },
+        };
+
+        // 字型定義：同時指定 ascii, eastAsia, 與 hAnsi 為標楷體以確保強迫生效
+        const fontDef = {
+            ascii: "DFKai-SB",
+            eastAsia: "標楷體",
+            hAnsi: "DFKai-SB"
+        };
+
+        // 4. 構建月曆表格 (表格一)
+        const tableRows = [];
+
+        // 4.1 表頭列 (Mon. 到 Sun.) -> 標楷體、12號字、非粗體、置中
+        const headers = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."];
+        const headerRow = new TableRow({
+            children: headers.map(h => new TableCell({
+                children: [
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: h,
+                                font: fontDef,
+                                bold: false,
+                                size: 24, // 12pt
+                            })
+                        ],
+                        alignment: AlignmentType.CENTER // 置中
+                    })
+                ],
+                shading: { fill: "D9D9D9" }, // 表頭灰色背景
+                borders: cellBorders,
+                verticalAlign: VerticalAlign.CENTER
+            }))
+        });
+        tableRows.push(headerRow);
+
+        // 4.2 資料列 -> 標楷體、12號字、非粗體、置左
+        for (let i = 0; i < calendarCells.length; i += 7) {
+            const rowCells = calendarCells.slice(i, i + 7);
+            const tableRow = new TableRow({
+                children: rowCells.map(cell => {
+                    const cellChildren = [];
+                    
+                    if (cell.day !== null) {
+                        cellChildren.push(new Paragraph({
+                            children: [
+                                new TextRun({
+                                    text: String(cell.day),
+                                    font: fontDef,
+                                    bold: false,
+                                    size: 24, // 12pt
+                                })
+                            ],
+                            alignment: AlignmentType.LEFT, // 置左
+                            spacing: { after: 100 }
+                        }));
+
+                        // 取得當天值班人員
+                        const dayStaff = { C1: [], C2: [] };
+                        state.residents.forEach(doc => {
+                            const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${cell.day}`] || 'O';
+                            if (shift in dayStaff) {
+                                dayStaff[shift].push(doc);
+                            }
+                        });
+
+                        const c1Name = dayStaff.C1.map(doc => doc.name).join('、');
+                        const c2Name = dayStaff.C2.map(doc => doc.name).join('、');
+                        const staffText = (c1Name || c2Name) ? `${c1Name || '無'}/${c2Name || '無'}` : "";
+
+                        cellChildren.push(new Paragraph({
+                            children: [
+                                new TextRun({
+                                    text: staffText,
+                                    font: fontDef,
+                                    bold: false, // 非粗體
+                                    size: 24, // 12pt
+                                })
+                            ],
+                            alignment: AlignmentType.LEFT, // 置左
+                            spacing: { before: 100, after: 100 }
+                        }));
+                    } else {
+                        // 空白格放一個空段落
+                        cellChildren.push(new Paragraph({ text: "" }));
+                    }
+
+                    return new TableCell({
+                        children: cellChildren,
+                        shading: { fill: cell.isWeekend ? "EFEFEF" : "FFFFFF" }, // 週末淺灰，週間白色
+                        borders: cellBorders,
+                        verticalAlign: VerticalAlign.CENTER
+                    });
+                })
+            });
+            tableRows.push(tableRow);
+        }
+
+        const calendarTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: tableRows
+        });
+
+        // 5. 構建週六班表 (表格二) (Date, Angio, Special, 注射室)
+        const satRows = [];
+        
+        // 5.1 週六班表表頭 -> 標楷體、12號字、非粗體、置中、平均欄寬
+        const satHeaders = ["Date", "Angio", "Special", "注射室"];
+        const satHeaderRow = new TableRow({
+            children: satHeaders.map(sh => new TableCell({
+                children: [
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: sh,
+                                font: fontDef,
+                                bold: false, // 非粗體
+                                size: 24, // 12pt
+                            })
+                        ],
+                        alignment: AlignmentType.CENTER // 置中
+                    })
+                ],
+                width: { size: 25, type: WidthType.PERCENTAGE }, // 平均分配欄寬：4欄各25%
+                shading: { fill: "D9D9D9" }, // 表頭灰色背景
+                borders: cellBorders,
+                verticalAlign: VerticalAlign.CENTER
+            }))
+        });
+        satRows.push(satHeaderRow);
+
+        // 5.2 尋找當月所有週六並產生資料列 -> 標楷體、12號字、非粗體、置中、平均欄寬
+        const yy = String(year).slice(-2);
+        for (let d = 1; d <= daysCount; d++) {
+            const dayRaw = new Date(year, month - 1, d).getDay();
+            if (dayRaw === 6) { // 6 = Saturday
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                
+                const angioDoc = state.residents.find(r => r.id === dayAssign.angio);
+                const specDoc = state.residents.find(r => r.id === dayAssign.spec);
+                const injDoc = state.residents.find(r => r.id === dayAssign.inj);
+
+                const dateStr = `${yy}/${month}/${d}`;
+                const angioName = angioDoc ? angioDoc.name : '';
+                const specName = specDoc ? specDoc.name : '';
+                const injName = injDoc ? injDoc.name : '';
+
+                const rowData = [dateStr, angioName, specName, injName];
+                const satRow = new TableRow({
+                    children: rowData.map(text => new TableCell({
+                        children: [
+                            new Paragraph({
+                                children: [
+                                    new TextRun({
+                                        text: text,
+                                        font: fontDef,
+                                        bold: false, // 非粗體
+                                        size: 24, // 12pt
+                                    })
+                                ],
+                                alignment: AlignmentType.CENTER, // 置中
+                                spacing: { before: 100, after: 100 }
+                            })
+                        ],
+                        width: { size: 25, type: WidthType.PERCENTAGE }, // 平均分配欄寬：4欄各25%
+                        shading: { fill: "FFFFFF" },
+                        borders: cellBorders,
+                        verticalAlign: VerticalAlign.CENTER
+                    }))
+                });
+                satRows.push(satRow);
+            }
+        }
+
+        const saturdayTable = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: satRows
+        });
+
+        // 6. 建立 Document 實體，將預設字型設定為「標楷體」
+        const doc = new Document({
+            styles: {
+                default: {
+                    document: {
+                        run: {
+                            font: fontDef
+                        }
+                    }
+                }
+            },
+            sections: [{
+                properties: {},
+                children: [
+                    // 標題 1 (值班表) -> 標楷體、大小為 16 號字
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `${year} ${String(month).padStart(2, '0')} 月住院醫師值班表`,
+                                font: fontDef,
+                                bold: true,
+                                size: 32, // 16pt
+                            })
+                        ],
+                        spacing: { after: 200 }
+                    }),
+                    calendarTable,
+                    // 間隔空行
+                    new Paragraph({ text: "", spacing: { before: 300, after: 300 } }),
+                    // 標題 2 (週六班表) -> 標楷體、大小為 16 號字
+                    new Paragraph({
+                        children: [
+                            new TextRun({
+                                text: `${year} ${String(month).padStart(2, '0')} 月週六班表`,
+                                font: fontDef,
+                                bold: true,
+                                size: 32, // 16pt
+                            })
+                        ],
+                        spacing: { after: 200 }
+                    }),
+                    saturdayTable
+                ]
+            }]
+        });
+
+        // 7. 將 Document 打包並下載
+        Packer.toBlob(doc).then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${year}_${String(month).padStart(2, '0')}_住院醫師與週六班表.docx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }).catch(err => {
+            console.error("無法產生 Word 文件", err);
+            alert("產生 Word 文件時發生錯誤：" + err.message);
+        });
+    }
+
     const printBtn = document.getElementById('btn-print');
     if (printBtn) {
         printBtn.addEventListener('click', () => {
-            window.print();
+            exportToDocx();
         });
     }
 

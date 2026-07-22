@@ -1550,3 +1550,55 @@ main {
 .scheduler-card.full-view .calendar-container {
     height: auto;
 }
+
+/* Export Dropdown Menu Styles */
+.export-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.export-dropdown .dropdown-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: #1e293b;
+    border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.15));
+    border-radius: var(--border-radius-md, 8px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    min-width: 210px;
+    padding: 6px 0;
+    backdrop-filter: blur(12px);
+}
+
+.export-dropdown.active .dropdown-menu {
+    display: block;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.export-dropdown .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary, #f8fafc);
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.2s, color 0.2s;
+}
+
+.export-dropdown .dropdown-item:hover {
+    background: rgba(59, 130, 246, 0.18);
+    color: #38bdf8;
+}
+
+.export-dropdown .dropdown-item svg {
+    flex-shrink: 0;
+}
+

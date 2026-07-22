@@ -997,12 +997,294 @@ function initEventListeners() {
         });
     }
 
+    // Export to ODT
+    function exportToOdt() {
+        if (!window.JSZip) {
+            alert("ODT 匯出套件載入中，請稍候再試。若持續無法載入，請檢查您的網路連線。");
+            return;
+        }
+
+        // 1. 解析年份與月份
+        const [year, month] = state.currentMonth.split('-').map(Number);
+        const daysCount = new Date(year, month, 0).getDate();
+        const firstDayIndexRaw = new Date(year, month - 1, 1).getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+        const firstDayIndex = firstDayIndexRaw === 0 ? 6 : firstDayIndexRaw - 1; // 0 = Mon, 6 = Sun
+
+        // 2. 準備月曆表格的儲存格資料
+        const calendarCells = [];
+        for (let i = 0; i < firstDayIndex; i++) {
+            calendarCells.push({ day: null, isWeekend: i >= 5 });
+        }
+        for (let d = 1; d <= daysCount; d++) {
+            const dayRaw = new Date(year, month - 1, d).getDay();
+            const isWeekend = (dayRaw === 0 || dayRaw === 6);
+            calendarCells.push({ day: d, isWeekend });
+        }
+        while (calendarCells.length % 7 !== 0) {
+            const idx = calendarCells.length % 7;
+            calendarCells.push({ day: null, isWeekend: idx >= 5 });
+        }
+
+        function escapeXml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
+        // 3. 構建 content.xml 內容
+        let contentXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-content 
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" 
+    xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" 
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" 
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" 
+    xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" 
+    xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+    office:version="1.2">
+    <office:font-face-decls>
+        <style:font-face style:name="標楷體" svg:font-family="標楷體, DFKai-SB"/>
+    </office:font-face-decls>
+    <office:automatic-styles>
+        <style:style style:name="P_Title" style:family="paragraph">
+            <style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.4cm" fo:text-align="left"/>
+            <style:text-properties style:font-name="標楷體" style:font-name-asian="標楷體" fo:font-size="16pt" fo:font-weight="bold"/>
+        </style:style>
+        <style:style style:name="P_Center" style:family="paragraph">
+            <style:paragraph-properties fo:margin-top="0.05cm" fo:margin-bottom="0.05cm" fo:text-align="center"/>
+            <style:text-properties style:font-name="標楷體" style:font-name-asian="標楷體" fo:font-size="12pt"/>
+        </style:style>
+        <style:style style:name="P_Left" style:family="paragraph">
+            <style:paragraph-properties fo:margin-top="0.05cm" fo:margin-bottom="0.05cm" fo:text-align="left"/>
+            <style:text-properties style:font-name="標楷體" style:font-name-asian="標楷體" fo:font-size="12pt"/>
+        </style:style>
+        <style:style style:name="P_Empty" style:family="paragraph">
+            <style:paragraph-properties fo:margin-top="0.3cm" fo:margin-bottom="0.3cm"/>
+            <style:text-properties style:font-name="標楷體" style:font-name-asian="標楷體" fo:font-size="12pt"/>
+        </style:style>
+        <style:style style:name="Table1" style:family="table">
+            <style:table-properties style:width="100%" table:align="margin"/>
+        </style:style>
+        <style:style style:name="Table1.Col" style:family="table-column">
+            <style:table-column-properties style:rel-column-width="14.28%"/>
+        </style:style>
+        <style:style style:name="Table2" style:family="table">
+            <style:table-properties style:width="100%" table:align="margin"/>
+        </style:style>
+        <style:style style:name="Table2.Col" style:family="table-column">
+            <style:table-column-properties style:rel-column-width="25%"/>
+        </style:style>
+        <style:style style:name="Cell_Header" style:family="table-cell">
+            <style:table-cell-properties fo:background-color="#D9D9D9" fo:padding="0.15cm" fo:border="0.5pt solid #000000" style:vertical-alignment="middle"/>
+        </style:style>
+        <style:style style:name="Cell_Weekday" style:family="table-cell">
+            <style:table-cell-properties fo:background-color="#FFFFFF" fo:padding="0.15cm" fo:border="0.5pt solid #000000" style:vertical-alignment="middle"/>
+        </style:style>
+        <style:style style:name="Cell_Weekend" style:family="table-cell">
+            <style:table-cell-properties fo:background-color="#EFEFEF" fo:padding="0.15cm" fo:border="0.5pt solid #000000" style:vertical-alignment="middle"/>
+        </style:style>
+    </office:automatic-styles>
+    <office:body>
+        <office:text>`;
+
+        // Title 1
+        contentXml += `\n            <text:p text:style-name="P_Title">${escapeXml(`${year} ${String(month).padStart(2, '0')} 月住院醫師值班表`)}</text:p>`;
+
+        // Table 1 (Calendar Table)
+        contentXml += `\n            <table:table table:name="CalendarTable" table:style-name="Table1">`;
+        contentXml += `\n                <table:table-column table:style-name="Table1.Col" table:number-columns-repeated="7"/>`;
+
+        // Header row
+        const headers = ["Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat.", "Sun."];
+        contentXml += `\n                <table:table-row>`;
+        headers.forEach(h => {
+            contentXml += `\n                    <table:table-cell table:style-name="Cell_Header" office:value-type="string"><text:p text:style-name="P_Center">${escapeXml(h)}</text:p></table:table-cell>`;
+        });
+        contentXml += `\n                </table:table-row>`;
+
+        // Data rows
+        for (let i = 0; i < calendarCells.length; i += 7) {
+            const rowCells = calendarCells.slice(i, i + 7);
+            contentXml += `\n                <table:table-row>`;
+            rowCells.forEach(cell => {
+                const cellStyle = cell.isWeekend ? "Cell_Weekend" : "Cell_Weekday";
+                contentXml += `\n                    <table:table-cell table:style-name="${cellStyle}" office:value-type="string">`;
+                if (cell.day !== null) {
+                    contentXml += `<text:p text:style-name="P_Left">${escapeXml(String(cell.day))}</text:p>`;
+
+                    const dayStaff = { C1: [], C2: [] };
+                    state.residents.forEach(doc => {
+                        const shift = (state.schedule[state.currentMonth] || {})[`${doc.id}_${cell.day}`] || 'O';
+                        if (shift in dayStaff) {
+                            dayStaff[shift].push(doc);
+                        }
+                    });
+
+                    const c1Name = dayStaff.C1.map(doc => doc.name).join('、');
+                    const c2Name = dayStaff.C2.map(doc => doc.name).join('、');
+                    const staffText = (c1Name || c2Name) ? `${c1Name || '無'}/${c2Name || '無'}` : "";
+
+                    if (staffText) {
+                        contentXml += `<text:p text:style-name="P_Left">${escapeXml(staffText)}</text:p>`;
+                    }
+                } else {
+                    contentXml += `<text:p text:style-name="P_Left"></text:p>`;
+                }
+                contentXml += `</table:table-cell>`;
+            });
+            contentXml += `\n                </table:table-row>`;
+        }
+        contentXml += `\n            </table:table>`;
+
+        // Spacing
+        contentXml += `\n            <text:p text:style-name="P_Empty"></text:p>`;
+
+        // Title 2
+        contentXml += `\n            <text:p text:style-name="P_Title">${escapeXml(`${year} ${String(month).padStart(2, '0')} 月週六班表`)}</text:p>`;
+
+        // Table 2 (Saturday Table)
+        contentXml += `\n            <table:table table:name="SaturdayTable" table:style-name="Table2">`;
+        contentXml += `\n                <table:table-column table:style-name="Table2.Col" table:number-columns-repeated="4"/>`;
+
+        const satHeaders = ["Date", "Angio", "Special", "注射室"];
+        contentXml += `\n                <table:table-row>`;
+        satHeaders.forEach(sh => {
+            contentXml += `\n                    <table:table-cell table:style-name="Cell_Header" office:value-type="string"><text:p text:style-name="P_Center">${escapeXml(sh)}</text:p></table:table-cell>`;
+        });
+        contentXml += `\n                </table:table-row>`;
+
+        const yy = String(year).slice(-2);
+        for (let d = 1; d <= daysCount; d++) {
+            const dayRaw = new Date(year, month - 1, d).getDay();
+            if (dayRaw === 6) {
+                const dayAssign = (state.saturdayAssignments[state.currentMonth] || {})[d] || {};
+                const angioDoc = state.residents.find(r => r.id === dayAssign.angio);
+                const specDoc = state.residents.find(r => r.id === dayAssign.spec);
+                const injDoc = state.residents.find(r => r.id === dayAssign.inj);
+
+                const dateStr = `${yy}/${month}/${d}`;
+                const angioName = angioDoc ? angioDoc.name : '';
+                const specName = specDoc ? specDoc.name : '';
+                const injName = injDoc ? injDoc.name : '';
+
+                const rowData = [dateStr, angioName, specName, injName];
+                contentXml += `\n                <table:table-row>`;
+                rowData.forEach(text => {
+                    contentXml += `\n                    <table:table-cell table:style-name="Cell_Weekday" office:value-type="string"><text:p text:style-name="P_Center">${escapeXml(text)}</text:p></table:table-cell>`;
+                });
+                contentXml += `\n                </table:table-row>`;
+            }
+        }
+        contentXml += `\n            </table:table>`;
+
+        contentXml += `\n        </office:text>
+    </office:body>
+</office:document-content>`;
+
+        const zip = new window.JSZip();
+
+        // mimetype
+        zip.file('mimetype', 'application/vnd.oasis.opendocument.text', { compression: 'STORE' });
+
+        // manifest.xml
+        const manifestXml = `<?xml version="1.0" encoding="UTF-8"?>
+<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">
+  <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/>
+  <manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>
+  <manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/>
+</manifest:manifest>`;
+        zip.file('META-INF/manifest.xml', manifestXml);
+
+        // styles.xml
+        const stylesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" office:version="1.2">
+  <office:styles>
+    <style:default-style style:family="paragraph">
+      <style:text-properties style:font-name="標楷體" style:font-name-asian="標楷體" fo:font-size="12pt"/>
+    </style:default-style>
+  </office:styles>
+  <office:automatic-styles>
+    <style:page-layout style:name="pm1">
+      <style:page-layout-properties fo:page-width="21cm" fo:page-height="29.7cm" fo:margin-top="2cm" fo:margin-bottom="2cm" fo:margin-left="2cm" fo:margin-right="2cm"/>
+    </style:page-layout>
+  </office:automatic-styles>
+  <office:master-styles>
+    <style:master-page style:name="Standard" style:page-layout-name="pm1"/>
+  </office:master-styles>
+</office:document-styles>`;
+        zip.file('styles.xml', stylesXml);
+
+        // meta.xml
+        const metaXml = `<?xml version="1.0" encoding="UTF-8"?>
+<office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0" xmlns:dc="http://purl.org/dc/elements/1.1/" office:version="1.2">
+  <office:meta>
+    <dc:title>${escapeXml(`${year} ${String(month).padStart(2, '0')} 月住院醫師值班表`)}</dc:title>
+    <meta:generator>Resident Scheduler System</meta:generator>
+  </office:meta>
+</office:document-meta>`;
+        zip.file('meta.xml', metaXml);
+
+        // content.xml
+        zip.file('content.xml', contentXml);
+
+        zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.oasis.opendocument.text' }).then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${year}_${String(month).padStart(2, '0')}_住院醫師與週六班表.odt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }).catch(err => {
+            console.error("無法產生 ODT 文件", err);
+            alert("產生 ODT 文件時發生錯誤：" + err.message);
+        });
+    }
+
+    // Export Dropdown menu handlers
+    const exportDropdownContainer = document.getElementById('export-dropdown-container');
+    const exportDropdownBtn = document.getElementById('btn-export-dropdown');
+    const exportDocxBtn = document.getElementById('btn-export-docx');
+    const exportOdtBtn = document.getElementById('btn-export-odt');
     const printBtn = document.getElementById('btn-print');
+
+    if (exportDropdownBtn && exportDropdownContainer) {
+        exportDropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            exportDropdownContainer.classList.toggle('active');
+        });
+    }
+
+    if (exportDocxBtn) {
+        exportDocxBtn.addEventListener('click', () => {
+            if (exportDropdownContainer) exportDropdownContainer.classList.remove('active');
+            exportToDocx();
+        });
+    }
+
+    if (exportOdtBtn) {
+        exportOdtBtn.addEventListener('click', () => {
+            if (exportDropdownContainer) exportDropdownContainer.classList.remove('active');
+            exportToOdt();
+        });
+    }
+
     if (printBtn) {
         printBtn.addEventListener('click', () => {
             exportToDocx();
         });
     }
+
+    document.addEventListener('click', (e) => {
+        if (exportDropdownContainer && !exportDropdownContainer.contains(e.target)) {
+            exportDropdownContainer.classList.remove('active');
+        }
+    });
 
     // Staffing requirements inputs
     const reqInputs = {
